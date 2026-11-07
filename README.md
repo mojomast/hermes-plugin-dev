@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.jpg" alt="Hermes Plugin Dev: a skill + plugin for building Hermes plugins" width="100%">
+  <img src="assets/banner-v3.jpg" alt="Hermes Plugin Dev: a skill + plugin for building Hermes plugins" width="100%">
 </p>
 
 <h1 align="center">hermes-plugin-dev</h1>
