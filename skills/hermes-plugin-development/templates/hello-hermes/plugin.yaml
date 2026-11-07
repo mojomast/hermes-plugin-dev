@@ -1,0 +1,17 @@
+# Native Hermes plugin manifest. Quote version. Keep provides_* identical to what register() does.
+manifest_version: 2
+api_version: 1
+name: hello-hermes
+version: "0.1.0"
+description: >-
+  Minimal example plugin: one composable tool that greets and reports status.
+  Disclosure: no network, no subprocesses, no background threads, no credentials.
+author: your-github-login
+license: MIT
+homepage: https://github.com/your-github-login/hello-hermes
+requires_hermes: ">=0.21.6"
+provides_tools:
+  - hello_hermes
+provides_hooks: []
+provides_middleware: []
+requires_env: []

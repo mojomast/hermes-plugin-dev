@@ -1,0 +1,12 @@
+{
+  "name": "hermes-plugin-dev",
+  "description": "Build Hermes Agent plugins with your coding agent.",
+  "owner": { "name": "mojomast", "url": "https://github.com/mojomast" },
+  "plugins": [
+    {
+      "name": "hermes-plugin-dev",
+      "source": "./",
+      "description": "Skill for building, testing, releasing and catalog-listing Hermes Agent plugins."
+    }
+  ]
+}

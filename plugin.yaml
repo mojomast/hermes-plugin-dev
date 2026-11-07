@@ -1,0 +1,20 @@
+manifest_version: 2
+api_version: 1
+name: hermes-plugin-dev
+version: "0.1.0"
+description: >-
+  Build Hermes plugins with Hermes. Bundles the hermes-plugin-development skill and two
+  offline tools: scaffold a plugin from a validated template, and lint a plugin
+  (manifest, catalog entry, schema token cost). Disclosure: no network, no subprocesses,
+  no credentials; writes only inside the target directory you name; the lint's token
+  measure imports the target plugin's register() with a fake host, like doctor does.
+author: mojomast
+license: MIT
+homepage: https://github.com/mojomast/hermes-plugin-dev
+requires_hermes: ">=0.21.6"
+provides_tools:
+  - hpd_scaffold
+  - hpd_check
+provides_hooks: []
+provides_middleware: []
+requires_env: []

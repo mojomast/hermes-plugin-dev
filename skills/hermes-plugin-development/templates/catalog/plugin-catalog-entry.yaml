@@ -1,0 +1,27 @@
+# Save as plugin-catalog/<name>.yaml on a branch of YOUR FORK of NousResearch/hermes-agent.
+# The PR diff should contain only this file.
+name: hello-hermes                 # [a-z0-9_-]{1,64}; matches plugin.yaml name
+title: Hello Hermes                # optional card title
+repo: https://github.com/your-github-login/hello-hermes
+sha: "0000000000000000000000000000000000000000"  # full 40-hex commit (the tagged release commit)
+subdir: ""                         # e.g. "integration/hermes" if the plugin lives in a subfolder
+description: >-
+  One line on what it does. Disclose network, subprocesses, background work, credential use.
+maintainer: your-github-login
+tier: community                    # contributors always use community
+category: tools                    # desktop|memory|platform|web|tools|voice|automation|models|general
+requires_hermes: ">=0.21.6"        # SemVer floor; also declare in plugin.yaml
+version: "0.1.0"                   # quoted label for the sha; bump with the sha
+docs_url: https://github.com/your-github-login/hello-hermes#readme
+readme: true
+platforms: []
+# image/screenshots: GitHub hosts only, pinned to the SAME sha, each must return HTTP 200. Max 6 screenshots.
+# image: https://raw.githubusercontent.com/your-github-login/hello-hermes/<sha>/docs/banner.png
+# screenshots:
+#   - https://raw.githubusercontent.com/your-github-login/hello-hermes/<sha>/docs/screenshots/1.png
+known_issues: []
+capabilities:                      # must match what register() does at the pinned sha
+  provides_tools: [hello_hermes]
+  provides_hooks: []
+  provides_middleware: []
+  requires_env: []

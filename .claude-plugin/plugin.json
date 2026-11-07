@@ -1,0 +1,10 @@
+{
+  "name": "hermes-plugin-dev",
+  "description": "Skill for building, testing, releasing and catalog-listing Hermes Agent plugins.",
+  "version": "0.1.0",
+  "author": { "name": "mojomast", "url": "https://github.com/mojomast" },
+  "homepage": "https://github.com/mojomast/hermes-plugin-dev",
+  "repository": "https://github.com/mojomast/hermes-plugin-dev",
+  "license": "MIT",
+  "keywords": ["hermes", "hermes-agent", "nous-research", "agent-skills", "plugins"]
+}
