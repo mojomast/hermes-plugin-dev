@@ -1,8 +1,12 @@
 # Tools, hooks, skills, state and secrets
 
-Source of truth: `hermes_cli/plugins_context.py` (`PluginContext`),
-`hermes_cli/plugins_content.py` (`register_skill`), `plugins/plugin_storage.py`,
-`agent/secret_scope.py`, and `website/docs/developer-guide/plugins/public-api.md`.
+Source of truth: `hermes_cli/plugins_context.py` (`PluginContext`, re-exported
+from `hermes_cli/plugins.py`), `hermes_cli/plugins_capability_ctx.py`
+(`has_capability`, `side_question`), `hermes_cli/plugins_registrars.py` (the
+generated `register_<category>_provider` methods), `hermes_cli/plugins_content.py`
+(`register_skill`), `plugins/plugin_storage.py`, `agent/secret_scope.py`, and
+`website/docs/developer-guide/plugins/public-api.md`. Verified against
+`origin/main` @ `acdc8f1ba6` (2026-11-08).
 
 ## register(ctx)
 
@@ -32,14 +36,41 @@ register_tool(name, toolset, schema, handler, check_fn=None, requires_env=None,
 - Names already claimed by another toolset are rejected; validate checks
   "built-in tool collisions".
 
-Other `ctx` methods present in the verified source include `register_hook`,
-`register_middleware`, `register_command`, `register_cli_command`, `call_mcp`,
-`dispatch_tool`, `inject_message`, `post_message`, `ask_choice`, `llm`,
-`register_system_prompt_section`, `register_memory_provider`,
-`register_platform`, provider registrations (TTS, image/video gen, web search,
-browser, terminal), `register_secret_source`, `spawn_task`, `on_unload`,
-`get_config`/`set_config`, `state`, `profile_name`. **Check `public-api.md`
-before relying on any of these**: presence in source isn't a stability promise.
+## The `ctx` surface (verified, 50 methods)
+
+`register_tool` and the rest of the 0.1 generation are still there; the list
+grew. Grouped, not alphabetical, because that is how you pick one:
+
+| Want to… | Method |
+|---|---|
+| expose a tool | `register_tool` |
+| react to a turn / tool / stream | `register_hook`, see `hooks.md` |
+| change behaviour instead of observing | `register_middleware(kind, callback)` |
+| add a slash command | `register_command(name, handler, ...)`, `register_cli_command` |
+| run a host-owned LLM call | `llm` (see `plugin-llm-access.md`), `side_question` (capability `llm.side_question`), `subagent_lifecycle`, `delegation_backends`, `current_cron_execution` |
+| reach MCP | `call_mcp(server, tool, arguments, timeout)` — default-deny |
+| call another registered tool | `dispatch_tool(name, args, **kw)` |
+| talk to the user mid-turn | `inject_message`, `post_message`, `ask_choice` |
+| steer the prompt | `register_system_prompt_section` (cached; prefer over `pre_llm_call`) |
+| ship a skill | `register_skill(name, path, description, frontmatter)` |
+| persist | `plugin_data_dir` / `plugin_db` (below), `state`, `get_config` / `set_config` |
+| know where you are | `plugin_id`, `profile_name`, `session_cwd`, `session_surface`, `has_plugin(id)` |
+| check consent | `has_capability(id)` — `references/capabilities-and-isolation.md` |
+| run background work | `spawn_task(coro, name=...)`, `on_unload(callback)` |
+| emit/subscribe internal events | `emit(event, payload)`, `subscribe(event, callback)` |
+| register a provider | `register_{image_gen,video_gen,web_search,browser,tts,transcription,delegation,terminal_environment,secret_source}_provider*`, `register_memory_provider`, `register_context_engine`, `register_context_reference`, `register_dashboard_auth_provider`, `register_login_backend`, `register_browser_page_backend`, `register_platform`, `register_platform_handler`, `register_telegram_handler`, `register_slack_action_handler`, `register_auxiliary_task`, `register_approval_transport`, `register_redaction_patterns`, `register_locale`, `register_locale_dir` |
+
+`register_secret_source` takes a `source=`, not a `provider=`. The provider
+methods are **generated** from `hermes_cli/plugins_registrars.py`; each type-checks
+the object, registers it in a profile-scoped registry, and is removed on unload.
+Two of them (`register_login_backend`, `register_browser_page_backend`) are
+refused for community installs — see the provenance note in
+`references/capabilities-and-isolation.md`.
+
+**Check `public-api.md` before importing anything else from Hermes**: the page is
+generated from `hermes_cli/data/plugin_api.json`, and `validate` warns (rule 9)
+on every Hermes import outside it. Presence of a method in source is not a
+stability promise; documented behaviour is.
 
 ## Schema design and token budget
 
@@ -55,11 +86,12 @@ Each exposed tool schema costs context on every turn.
 
 ## Hooks
 
-`ctx.register_hook(hook_name, callback, *, hold_stream=False)`. Common names:
-`pre_tool_call`, `post_tool_call`, `pre_llm_call`, `post_llm_call`,
-`on_session_start`, `on_session_end` (check the docs for the current list).
-Accept `**kwargs` in callbacks; payloads grow. If you need several behaviours on
-one hook, compose them in a single callback. Declare every hook in `provides_hooks`.
+`ctx.register_hook(hook_name, callback, *, hold_stream=False)`. 46 valid names at
+the verified commit; the full list, the four return shapes (observer /
+transform / directive / policy) and the timeout rules are in `hooks.md`.
+Accept `**kwargs` in callbacks; payloads grow additively. If you need several
+behaviours on one hook, compose them in a single callback. Declare every hook in
+`provides_hooks`.
 
 ## Bundled skills
 

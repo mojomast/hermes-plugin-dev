@@ -13,5 +13,4 @@ requires_hermes: ">=0.21.6"
 provides_tools:
   - hello_hermes
 provides_hooks: []
-provides_middleware: []
 requires_env: []

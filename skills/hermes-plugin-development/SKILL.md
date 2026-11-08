@@ -13,7 +13,7 @@ license: MIT
 Field guide distilled from shipping several community Hermes plugins (map/OSINT
 dashboard, virtual pets game, live-coding music studio, video tooling). Every API
 and CLI claim here was checked against hermes-agent source; see
-`references/verification.md` for exactly what was checked and on which version.
+`references/verification.md` for exactly what was checked and on which commit.
 **When this file and the live Hermes source/docs disagree, the source wins.**
 
 Canonical upstream docs (paths inside `NousResearch/hermes-agent`):
@@ -21,13 +21,16 @@ Canonical upstream docs (paths inside `NousResearch/hermes-agent`):
 | Topic | Path |
 |---|---|
 | Build a plugin | `website/docs/developer-guide/plugins/index.md` |
-| Public plugin API | `website/docs/developer-guide/plugins/public-api.md` |
+| Public plugin API (generated allowlist) | `website/docs/developer-guide/plugins/public-api.md`, `hermes_cli/data/plugin_api.json` |
 | Catalog submission | `website/docs/developer-guide/plugins/catalog-submission.md` |
 | Catalog admission rules + entry schema | `plugin-catalog/README.md` |
 | Dashboard plugins | `website/docs/user-guide/features/extending-the-dashboard.md` |
 | Desktop pane SDK | `website/docs/developer-guide/desktop-plugin-sdk.md` |
-| `ctx` implementation | `hermes_cli/plugins_context.py` |
-| Validator / doctor | `hermes_cli/plugin_validate.py`, `hermes_cli/subcommands/plugins.py` |
+| Provider guides (model, memory, context engine, image/video, web search, browser, TTS/STT, delegation, terminal, secret source) | `website/docs/developer-guide/*-plugin.md` |
+| Desktop-app declarations (`app:` / `requires:`) | `website/docs/developer-guide/plugins/application-declarations.md` |
+| `ctx` implementation | `hermes_cli/plugins_context.py` (`PluginContext`, re-exported from `hermes_cli.plugins`) |
+| Manifest parser, registrar table, capabilities | `hermes_cli/plugins_manifest.py`, `hermes_cli/plugins_registrars.py`, `hermes_cli/plugin_capabilities.py` |
+| Validator / doctor | `hermes_cli/plugin_validate*.py`, `hermes_cli/subcommands/plugins.py` |
 
 Third-party plugins live in **their own repos**. They reach users by
 `hermes plugins install owner/repo[/subdir]` or by a catalog entry, never by a
@@ -66,16 +69,30 @@ requires_hermes: ">=0.21.6"   # SemVer floor only
 provides_tools: [my_tool]     # must equal what register() registers
 provides_hooks: []
 requires_env: []
+capabilities: []              # privileged host surfaces; see below
 ```
 
 - `provides_tools`/`provides_hooks` don't gate loading, but `validate` and
   catalog CI fail if they drift from real registrations.
 - Unknown keys are tolerated with a warning; don't rely on invented keys doing anything.
+  `provides_middleware` is **not** a manifest field — it is a catalog
+  `capabilities:` key that `validate` compares against real middleware
+  registrations. Putting it in `plugin.yaml` logs an unknown-field warning.
 - Duplicate keys are silently "last one wins" in PyYAML. Test with a strict loader.
+- **Privileged surfaces need a declared capability** (`tools.override`,
+  `llm.model_override`, `llm.side_question`, `gateway.platform_actions`, …).
+  The user consents once at install/enable; undeclared or unconsented is off.
+  Probe `ctx.has_capability("<id>")` and degrade gracefully — never crash or
+  silently switch behaviour when it is missing. `hermes plugins capabilities`
+  prints declared vs granted.
+  Details: `references/capabilities-and-isolation.md`.
+- `plugins.isolation: host` (a user config, not yours) moves plugins into a
+  separate process and refuses a few surfaces outright. Same reference.
 
 ## 3. Tools (`references/tools-and-hooks.md`)
 
-Verified signature (`hermes_cli/plugins_context.py`):
+Verified signature (`hermes_cli/plugins_context.py`; `plugin.yaml` fields, hook
+names and every `register_*` method live in the sibling `plugins_*.py` modules):
 
 ```text
 ctx.register_tool(name, toolset, schema, handler, check_fn=None, requires_env=None,
@@ -92,9 +109,13 @@ ctx.register_tool(name, toolset, schema, handler, check_fn=None, requires_env=No
   report the delta (`templates/hello-hermes/scripts/measure_schemas.py`).
 - Return structured JSON: `{"ok": false, "code": ..., "error": ..., "fix": ...}`
   so the agent can recover by itself.
-- Hook callbacks should accept `**kwargs`; payloads gain fields over time.
-- `override=True` needs `plugins.entries.<id>.allow_tool_override: true`.
+- Hook callbacks should accept `**kwargs`; payloads gain fields over time
+  (46 hook names at the verified commit — `references/hooks.md`).
+- `override=True` needs the `tools.override` capability granted (or the legacy
+  `plugins.entries.<id>.allow_tool_override: true`); otherwise it raises.
 - `ctx.call_mcp` is default-deny (per-plugin MCP allowlist).
+- `ctx.has_capability(id)` / `ctx.side_question(token, prompt)` sit on the
+  capability mixin; treat a missing capability as "feature off", not an error.
 
 ## 4. Skills, state, secrets
 
@@ -176,6 +197,10 @@ restart, re-run doctor.
 | `CreatePullRequest` permission error | 5-open-PR cap or not from a fork; free a slot. |
 | Context bloat / slow turns | Fewer composable tools; measure o200k. |
 | validate security scan fails on docs | Scanner reads Markdown too; reword risky command words. |
+| validate: `no core override` / `private import` | Patch through hooks/middleware/ctx, not `setattr` on Hermes modules; import only `public-api.md` names. |
+| Feature silently off after install | Capability not declared/consented; declare it in `capabilities:` and probe `has_capability`. |
+| `register_platform`/approval/Telegram plugin fails to load | User runs `plugins.isolation: host`; those surfaces need `in_process`. |
+| Loader logs `unknown manifest field: provides_middleware` | It is a catalog `capabilities:` key, not a `plugin.yaml` field. |
 
 ## 10. Hackathons and demos
 
@@ -188,7 +213,8 @@ Never post or submit on someone's behalf without their explicit yes.
 - `hpd_scaffold(target_dir, name)`: copy `templates/hello-hermes` into a new or empty
   folder, renamed, with a catalog entry and PR body stub.
 - `hpd_check(path, catalog_entry?)`: offline lint covering strict YAML, manifest rules,
-  `provides_tools` vs registered, schema o200k tokens, and catalog entry rules. Then run
+  `provides_tools` vs registered, schema o200k tokens, core-override rebinds,
+  imports outside the public API, and catalog entry rules. Then run
   `hermes plugins doctor` and `validate` in a terminal for the authoritative gate.
 
 Other agents can get the same checks with `python hpd_core.py` functions from the repo.
@@ -198,7 +224,9 @@ Other agents can get the same checks with `python hpd_core.py` functions from th
 | Path | Purpose |
 |---|---|
 | `references/plugin-yaml.md` | Manifest fields |
-| `references/tools-and-hooks.md` | `ctx` API, schema design, hooks, skills, secrets, storage |
+| `references/tools-and-hooks.md` | `ctx` API, schema design, skills, secrets, storage |
+| `references/hooks.md` | Every hook name + payload notes |
+| `references/capabilities-and-isolation.md` | Capability ids, consent, `plugins.isolation` |
 | `references/panes.md` | Dashboard and desktop panes |
 | `references/testing.md` | Fake ctx, mock host, doctor, validate, scanner |
 | `references/release-and-catalog.md` | Versioning, tags, catalog entry, PRs, deploy, rollback |

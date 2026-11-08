@@ -107,3 +107,54 @@ def test_repo_catalog_entry_is_valid():
         sys.path.insert(0, str(ROOT))
         import hpd_core
         assert hpd_core.check_catalog(entry)["ok"]
+
+
+def test_core_override_is_refused(tmp_path):
+    ctx = load()
+    p = tmp_path / "patcher"
+    ctx.tools["hpd_scaffold"][1]({"target_dir": str(p), "name": "patcher"})
+    (p / "shim.py").write_text(
+        "import hermes_cli.plugins as hp\n"
+        "hp.PluginContext.register_tool = lambda *a, **k: None\n", encoding="utf-8")
+    out = ctx.tools["hpd_check"][1]({"path": str(p)})
+    assert not out["ok"]
+    assert any("core_override" in e for e in out["core_override"]["errors"])
+    (p / "shim.py").unlink()
+
+    (p / "shim.py").write_text(
+        "import sys\n"
+        "sys.modules['hermes_cli.plugins'] = object()\n", encoding="utf-8")
+    assert not ctx.tools["hpd_check"][1]({"path": str(p)})["ok"]
+
+
+def test_core_override_allows_own_modules(tmp_path):
+    ctx = load()
+    p = tmp_path / "clean"
+    ctx.tools["hpd_scaffold"][1]({"target_dir": str(p), "name": "clean"})
+    (p / "settings.py").write_text("class C:\n    pass\n\n\nC.value = 1\n", encoding="utf-8")
+    out = ctx.tools["hpd_check"][1]({"path": str(p)})
+    assert out["ok"], out
+    assert "core_override" not in out
+
+
+def test_manifest_unknown_field_and_bad_capability(tmp_path):
+    ctx = load()
+    p = tmp_path / "caps"
+    ctx.tools["hpd_scaffold"][1]({"target_dir": str(p), "name": "caps"})
+    mf = p / "plugin.yaml"
+    mf.write_text(mf.read_text().replace(
+        "provides_hooks: []",
+        "provides_hooks: []\nprovides_middleware: []\ncapabilities: [tools.override, typo.thing]"),
+        encoding="utf-8")
+    out = ctx.tools["hpd_check"][1]({"path": str(p)})
+    warnings = out["manifest"]["warnings"]
+    assert any("provides_middleware" in w and "catalog" in w for w in warnings)
+    assert any("typo.thing" in w for w in warnings)
+
+
+def test_private_imports_result_shape():
+    import hpd_core
+    res = hpd_core.check_private_imports(ROOT)
+    assert res["ok"] is True
+    assert isinstance(res["warnings"], list)
+    assert set(res) >= {"checked", "warnings"}

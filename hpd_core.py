@@ -1,6 +1,7 @@
 """Core logic for hermes-plugin-dev tools. Offline only: no network, no subprocesses."""
 from __future__ import annotations
 
+import ast
 import importlib.util
 import json
 import re
@@ -19,6 +20,31 @@ SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 CATEGORIES = {"desktop", "memory", "platform", "web", "tools", "voice", "automation", "models", "general"}
 IMAGE_HOSTS = re.compile(r"^https://(raw\.githubusercontent\.com|github\.com|[a-z0-9-]+\.githubusercontent\.com)/")
 SKIP = {"__pycache__", ".pytest_cache"}
+SCAN_EXCLUDE = {".git", ".venv", "venv", "node_modules", "tests", "docs", "references",
+                "templates", "examples", "__pycache__"}
+
+# Recognized plugin.yaml fields (`hermes_cli/plugins_manifest.py::_KNOWN_MANIFEST_FIELDS`).
+# Anything else is logged as "unknown manifest field(s) ignored" on every load under v2.
+KNOWN_MANIFEST_FIELDS = {
+    "name", "version", "description", "author", "requires_env", "provides_tools", "provides_hooks",
+    "kind", "hooks", "label", "optional_env", "platforms", "external_dependencies",
+    "pip_dependencies", "provides_browser_providers", "provides_web_providers",
+    "manifest_version", "api_version", "requires_plugins", "python_dependencies", "config_schema",
+    "license", "homepage", "tags", "capabilities", "emits", "listens", "hermes", "depends",
+    "requires_hermes", "python_runtime", "provides_locales", "requires_auth", "oauth", "config_keys",
+}
+VALID_KINDS = {"standalone", "backend", "exclusive", "platform", "model-provider"}
+# `hermes_cli/plugin_capabilities.py::_CAPABILITY_ROWS` — unknown ids are dropped, so a typo is a
+# silent downgrade rather than an error.
+VALID_CAPABILITIES = {
+    "tools.override", "llm.provider_override", "llm.model_override", "llm.agent_id_override",
+    "llm.profile_override", "llm.task_override", "llm.side_question", "gateway.platform_actions",
+}
+# Fallback only: the real list is the Hermes checkout's own top-level packages/modules.
+CORE_TOP_LEVEL = {
+    "agent", "gateway", "hermes_cli", "hermes_platform", "hermes_state", "hermes_constants",
+    "tools", "plugins", "providers", "cron", "pm", "channels", "tui_gateway", "sessions", "utils",
+}
 
 
 def _err(code: str, error: str, fix: str) -> dict:
@@ -121,6 +147,24 @@ def check_manifest(plugin: Path) -> dict:
         warnings.append("requires_hermes should be a SemVer floor like '>=0.21.6'")
     if data.get("manifest_version") != 2:
         warnings.append("consider manifest_version: 2")
+    unknown = sorted(set(data) - KNOWN_MANIFEST_FIELDS)
+    if unknown:
+        warnings.append(
+            f"unknown manifest field(s) ignored by Hermes: {', '.join(unknown)}"
+            + (" — provides_middleware belongs in the catalog capabilities block"
+               if "provides_middleware" in unknown else ""))
+    kind = data.get("kind")
+    if kind is not None and kind not in VALID_KINDS:
+        errors.append(f"kind {kind!r} must be one of {sorted(VALID_KINDS)}")
+    caps = data.get("capabilities") or []
+    if not isinstance(caps, list):
+        errors.append("capabilities must be a list of capability ids")
+    else:
+        for cap in caps:
+            if cap not in VALID_CAPABILITIES:
+                warnings.append(
+                    f"unknown capability id {cap!r} is dropped by Hermes (valid: "
+                    f"{', '.join(sorted(VALID_CAPABILITIES))}) — the feature will be off")
     if not (plugin / "pyproject.toml").is_file() and data.get("python_dependencies"):
         for dep in data["python_dependencies"]:
             if "<" not in str(dep):
@@ -166,6 +210,223 @@ def check_catalog(entry: Path) -> dict:
         warnings.append("offline lint cannot check HTTP 200; curl each image URL")
     del raw
     return {"ok": not errors, "errors": errors, "warnings": warnings}
+
+
+def _scan_files(plugin: Path):
+    """Runtime Python the plugin ships: no tests, docs, examples, references or templates."""
+    for path in sorted(plugin.rglob("*.py")):
+        rel = path.relative_to(plugin)
+        if SCAN_EXCLUDE.intersection(rel.parts[:-1]):
+            continue
+        if rel.name.startswith("test_") or rel.name.endswith("_test.py") or rel.name == "conftest.py":
+            continue
+        yield path, rel
+
+
+def _local_module_names(plugin: Path) -> set[str]:
+    names: set[str] = set()
+    for path in plugin.rglob("*"):
+        rel = path.relative_to(plugin)
+        if SCAN_EXCLUDE.intersection(rel.parts):
+            continue
+        names.add(path.stem if path.suffix == ".py" else path.name)
+    return names
+
+
+def _core_roots(local: set[str]) -> set[str]:
+    """Hermes-owned top-level names: the checkout's packages and root modules when importable."""
+    roots = set(CORE_TOP_LEVEL)
+    try:
+        spec = importlib.util.find_spec("hermes_cli")
+    except (ImportError, ValueError):
+        spec = None
+    if spec is not None and spec.origin:
+        root = Path(spec.origin).resolve().parent.parent
+        try:
+            roots |= {p.name for p in root.iterdir() if p.is_dir() and (p / "__init__.py").is_file()}
+            roots |= {p.stem for p in root.glob("*.py")}
+        except OSError:
+            pass
+    return (roots - {"setup", "conftest"}) - local
+
+
+def _dotted(node) -> str:
+    parts = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if isinstance(node, ast.Name):
+        parts.append(node.id)
+    return ".".join(reversed(parts))
+
+
+def _import_aliases(tree) -> dict:
+    aliases = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for item in node.names:
+                aliases[item.asname or item.name.split(".")[0]] = item.name
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            for item in node.names:
+                aliases[item.asname or item.name] = f"{node.module}.{item.name}"
+    return aliases
+
+
+def check_core_override(plugin: Path) -> dict:
+    """Static tripwire for rebinding Hermes core (`validate`'s `no core override` check).
+
+    A plugin extends Hermes through hooks, middleware, provider profiles and SDK slots. Assigning
+    over a core function, method, module attribute, `sys.modules` entry or `mock.patch` target
+    collides with every other plugin patching the same seam and breaks on the next release.
+    """
+    _ast = ast  # module-level import; alias keeps the scanner body readable
+
+    local = _local_module_names(plugin)
+    roots = _core_roots(local)
+    errors: list[str] = []
+
+    def finding(path, line, rule):
+        msg = f"{path.relative_to(plugin)}:{line}: {rule}"
+        if msg not in errors:
+            errors.append(msg)
+
+    for path, _rel in _scan_files(plugin):
+        try:
+            tree = _ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError:
+            continue
+        aliases = _import_aliases(tree)
+
+        def is_core_name(node) -> bool:
+            if not isinstance(node, _ast.Name):
+                return False
+            resolved = aliases.get(node.id, node.id)
+            return resolved.split(".")[0] in roots
+
+        for node in _ast.walk(tree):
+            targets = []
+            if isinstance(node, _ast.Assign):
+                targets = node.targets
+            elif isinstance(node, (_ast.AnnAssign, _ast.AugAssign)):
+                targets = [node.target]
+            for target in targets:
+                if isinstance(target, _ast.Attribute):
+                    base = target
+                    while isinstance(base, _ast.Attribute):
+                        base = base.value
+                    if is_core_name(base):
+                        finding(path, getattr(node, "lineno", 1), f"core_override: rebinds {_dotted(target)}")
+                elif (isinstance(target, _ast.Subscript) and _dotted(target.value) == "sys.modules"
+                      and isinstance(target.slice, _ast.Constant) and isinstance(target.slice.value, str)
+                      and target.slice.value.split(".")[0] in roots):
+                    finding(path, getattr(node, "lineno", 1), f"core_override: writes sys.modules[{target.slice.value!r}]")
+            if isinstance(node, _ast.Call):
+                fn = _dotted(node.func).split(".")[-1]
+                if fn == "setattr" and node.args and is_core_name(node.args[0]):
+                    finding(path, node.lineno, f"core_override: setattr({_dotted(node.args[0])}, ...)")
+                elif fn == "patch" and node.args and isinstance(node.args[0], _ast.Constant) \
+                        and isinstance(node.args[0].value, str):
+                    target = node.args[0].value
+                    if target.split(".")[0] in roots and target.count(".") >= 2:
+                        finding(path, node.lineno, f"core_override: mock.patch({target!r})")
+    return {
+        "ok": not errors, "errors": errors,
+        "fix": "Use a hook, middleware, provider registration or the Desktop SDK slot. If no public "
+               "surface reaches what you need, request the hook upstream instead of patching core.",
+    }
+
+
+def _public_api_entries() -> set[str] | None:
+    """`hermes_cli/data/plugin_api.json` when a Hermes checkout is importable, else None."""
+    try:
+        spec = importlib.util.find_spec("hermes_cli")
+    except (ImportError, ValueError):
+        return None
+    if spec is None or not spec.origin:
+        return None
+    data_path = Path(spec.origin).resolve().parent / "data" / "plugin_api.json"
+    if not data_path.is_file():
+        return None
+    try:
+        data = json.loads(data_path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return None
+    return {entry for group in data.get("groups", []) for entry in group.get("entries", [])}
+
+
+def _module_covered(entries: set[str], module: str) -> bool:
+    return any(":" not in entry and (module == entry or module.startswith(entry + "."))
+               for entry in entries)
+
+
+def _import_allowed(entries: set[str], module: str, name: str | None = None) -> bool:
+    if name is None:
+        return _module_covered(entries, module)
+    if f"{module}:{name}" in entries:
+        return True
+    if _module_covered(entries, f"{module}.{name}"):
+        return True
+    return _module_covered(entries, module) and not name.startswith("_")
+
+
+def _is_type_checking(test) -> bool:
+    return ((isinstance(test, ast.Name) and test.id == "TYPE_CHECKING")
+            or (isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"))
+
+
+def _type_checking_walk(node, in_tc: bool = False):
+    """Yield import nodes that are not inside an `if TYPE_CHECKING:` block."""
+    for child in ast.iter_child_nodes(node):
+        child_tc = in_tc or (isinstance(child, ast.If) and _is_type_checking(child.test))
+        if not child_tc and isinstance(child, (ast.Import, ast.ImportFrom)):
+            yield child
+        yield from _type_checking_walk(child, child_tc)
+
+
+def check_private_imports(plugin: Path) -> dict:
+    """Warn on imports outside the published plugin API (catalog rule 9; `validate` warns too)."""
+    entries = _public_api_entries()
+    if entries is None:
+        return {"ok": True, "checked": False, "warnings": [],
+                "note": "public API list unavailable offline (Hermes >= 0.23 importable, or accept "
+                        "`hermes plugins validate` as the authoritative warning)"}
+
+    local = _local_module_names(plugin)
+    roots = _core_roots(local)
+    warnings: list[str] = []
+    for path, _rel in _scan_files(plugin):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError:
+            continue
+        for node in _type_checking_walk(tree):
+            if isinstance(node, ast.Import):
+                for item in node.names:
+                    if item.name.split(".")[0] in local or item.name.split(".")[0] not in roots:
+                        continue
+                    if not _import_allowed(entries, item.name):
+                        msg = f"{path.relative_to(plugin)}:{node.lineno}: private_import: {item.name} is not in the public plugin API"
+                        if msg not in warnings:
+                            warnings.append(msg)
+            else:
+                if node.level or not node.module or node.module.split(".")[0] in local:
+                    continue
+                if node.module.split(".")[0] not in roots:
+                    continue
+                for item in node.names:
+                    if item.name == "*":
+                        continue
+                    if not _import_allowed(entries, node.module, item.name):
+                        msg = (f"{path.relative_to(plugin)}:{node.lineno}: private_import: "
+                               f"{node.module}.{item.name} is not in the public plugin API")
+                        if msg not in warnings:
+                            warnings.append(msg)
+    return {
+        "ok": True, "checked": True, "warnings": warnings[:20],
+        "total": len(warnings),
+        "fix": "Import from the modules/names listed in developer-guide/plugins/public-api.md; "
+               "internal paths move between releases and break the plugin.",
+    }
 
 
 class _FakeCtx:
@@ -366,6 +627,14 @@ def check(path: str, catalog_entry: str = "", tokens: bool = True) -> dict:
     if not plugin.is_dir():
         return _err("not_dir", f"{plugin} is not a directory", "Pass the plugin directory.")
     out: dict[str, Any] = {"manifest": check_manifest(plugin), "security": check_security(plugin)}
+
+    core = check_core_override(plugin)
+    if not core["ok"]:
+        out["core_override"] = core
+    imports = check_private_imports(plugin)
+    if imports.get("warnings") or not imports.get("checked"):
+        out["private_imports"] = imports
+
     if tokens:
         out["schemas"] = measure_schemas(plugin)
         declared = sorted(out["manifest"].get("declared_tools") or [])
