@@ -217,13 +217,155 @@ def measure_schemas(plugin: Path) -> dict:
             "schema_tokens": tokens, "method": method}
 
 
+def check_security(plugin: Path) -> dict:
+    """Non-executing heuristic preflight, not a sandbox or a security proof.
+
+    Findings deliberately omit source lines/values (they may contain secrets).
+    Only shipped runtime source is scanned, not tests/docs/template examples.
+    """
+    import ast
+    import ipaddress
+    from urllib.parse import urlsplit
+
+    errors, warnings = [], []
+    manifest, _ = _strict_yaml(plugin / 'plugin.yaml') if (plugin / 'plugin.yaml').is_file() else ({}, [])
+    floor = str((manifest or {}).get('requires_hermes', '')) if isinstance(manifest, dict) else ''
+    floor_match = re.fullmatch(r'>=\s*(\d+)\.(\d+)(?:\.(\d+))?', floor)
+    desktop_rest = False
+    excluded = {'.git', '.venv', 'venv', 'node_modules', 'tests', 'docs',
+                'references', 'templates', 'examples', '__pycache__'}
+
+    def finding(target, path, line, rule):
+        message = f"{path.relative_to(plugin)}:{line}: {rule}"
+        if message not in target:
+            target.append(message)
+
+    for path in sorted(plugin.rglob('*')):
+        if any(p in excluded for p in path.relative_to(plugin).parts) or path.is_symlink():
+            continue
+        if not path.is_file() or path.suffix not in {'.py', '.js', '.mjs', '.jsx', '.ts', '.tsx', '.html'}:
+            continue
+        text = path.read_text(encoding='utf-8', errors='replace')
+        ui = any(p in {'dashboard', 'desktop'} for p in path.relative_to(plugin).parts)
+        if 'desktop' in path.relative_to(plugin).parts and re.search(r'ctx\.rest\s*\(', text):
+            desktop_rest = True
+        for line, source in enumerate(text.splitlines(), 1):
+            if ui:
+                patterns = [
+                    (r'(?:https?:)?//(?:esm\.sh|unpkg\.com|cdn\.jsdelivr\.net)|(?:import\s.*from\s*[\'\"]https?://|<script[^>]+src=[\'\"]https?://)', 'remote_pane_code: use committed bundles and SDK.React'),
+                    (r'__HERMES_SESSION_TOKEN__|hermes\.webapp\.session|(?:localStorage|sessionStorage).*?(?:token|grant|session)', 'pane_token_read: use SDK auth transport'),
+                    (r'(?:window|globalThis)\.fetch\s*=', 'fetch_patch: do not replace host fetch'),
+                ]
+                for pattern, rule in patterns:
+                    if re.search(pattern, source, re.I):
+                        finding(errors, path, line, rule)
+            if re.search(r'~[/]\.hermes', source) or re.search(r'Path\.home\(\)\s*/\s*[\'\"]\.hermes', source):
+                finding(errors, path, line, 'profile_path: use get_hermes_home()')
+            for url in re.findall(r'http://[^\s\'\"<>`]+', source):
+                try:
+                    host = urlsplit(url.rstrip('),;')).hostname
+                    if not host:
+                        continue
+                except ValueError:
+                    continue  # not a URL literal (e.g. a regex defining this check)
+                try:
+                    loopback = host == 'localhost' or ipaddress.ip_address(host).is_loopback
+                except ValueError:
+                    loopback = False
+                if not loopback:
+                    finding(warnings, path, line, 'insecure_http: require HTTPS except explicit loopback development; review public research exceptions')
+        if path.suffix != '.py':
+            continue
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            finding(errors, path, 1, 'python_syntax: cannot inspect runtime source')
+            continue
+        aliases = {}
+        parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for item in node.names:
+                    aliases[item.asname or item.name] = item.name
+            elif isinstance(node, ast.ImportFrom):
+                for item in node.names:
+                    aliases[item.asname or item.name] = f'{node.module}.{item.name}'
+
+        def name(node):
+            if isinstance(node, ast.Name):
+                return aliases.get(node.id, node.id)
+            if isinstance(node, ast.Attribute):
+                return name(node.value) + '.' + node.attr
+            return ''
+
+        handlers = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                names = [i.name for i in node.names] if isinstance(node, ast.Import) else [node.module or '']
+                if 'fcntl' in names:
+                    ancestor = parents.get(node)
+                    guarded = False
+                    while ancestor is not None:
+                        if isinstance(ancestor, ast.Try) and any(h.type is None or (isinstance(h.type, ast.Name) and h.type.id in {'ImportError', 'ModuleNotFoundError'}) for h in ancestor.handlers):
+                            guarded = True
+                        ancestor = parents.get(ancestor)
+                    if not guarded:
+                        finding(warnings, path, node.lineno, 'platform_import: guard fcntl or restrict supported platforms')
+                if any(n == 'tools.desktop_ui' or n.startswith('tools.desktop_ui.') for n in names) or (isinstance(node, ast.ImportFrom) and node.module == 'tools' and any(i.name == 'desktop_ui' for i in node.names)):
+                    finding(errors, path, node.lineno, 'private_host_import: use documented ctx/SDK APIs')
+            if isinstance(node, ast.Subscript) and name(node.value) == 'os.environ':
+                key = node.slice
+            elif isinstance(node, ast.Call) and name(node.func) in {'os.getenv', 'os.environ.get'}:
+                key = node.args[0] if node.args else None
+            else:
+                key = None
+            if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                if re.search(r'(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)', key.value, re.I):
+                    finding(errors, path, node.lineno, 'credential_env: declare requires_env and use agent.secret_scope.get_secret')
+                elif key.value == 'HERMES_HOME':
+                    finding(errors, path, node.lineno, 'profile_env: use get_hermes_home()')
+            if not isinstance(node, ast.Call):
+                continue
+            fn = name(node.func)
+            if fn.endswith('register_tool') or fn.endswith('_register_tool_compat'):
+                for kw in node.keywords:
+                    if kw.arg == 'handler' and isinstance(kw.value, ast.Name):
+                        handlers.add(kw.value.id)
+            if fn == 'agent.secret_scope.get_secret' and node.args and isinstance(node.args[0], ast.Constant):
+                declared_env = (manifest or {}).get('requires_env', []) if isinstance(manifest, dict) else []
+                declared_names = {e.get('name') if isinstance(e, dict) else e for e in declared_env}
+                if node.args[0].value not in declared_names:
+                    finding(warnings, path, node.lineno, 'secret_declaration: ensure get_secret name/aliases are declared in requires_env')
+            if fn in {'subprocess.run', 'subprocess.Popen', 'subprocess.call', 'subprocess.check_call', 'subprocess.check_output', 'asyncio.create_subprocess_exec', 'asyncio.create_subprocess_shell'}:
+                env = next((kw.value for kw in node.keywords if kw.arg == 'env'), None)
+                if env is None or isinstance(env, ast.Constant) and env.value is None:
+                    finding(warnings, path, node.lineno, 'child_env_inherited: pass an explicit minimal environment')
+                elif any(name(n) == 'os.environ' for n in ast.walk(env)):
+                    finding(errors, path, node.lineno, 'child_env_full: use an exact-name minimal allowlist, not os.environ/copy')
+                else:
+                    finding(warnings, path, node.lineno, 'child_env_review: verify exact-name allowlist and scoped app keys')
+            if fn in {'requests.get', 'requests.post', 'requests.request', 'httpx.get', 'httpx.post', 'urllib.request.urlopen', 'urllib.request.Request'} or fn.endswith(('.session.get', '.session.request')):
+                finding(warnings, path, node.lineno, 'url_fetch_review: trace untrusted URLs through DNS-pinned SSRF guard and redirects')
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and (node.name in handlers or node.name in {'_handler', '_check', '_scaffold'}):
+                returns = [n for n in ast.walk(node) if isinstance(n, ast.Return)]
+                if any(isinstance(n.value, ast.Dict) for n in returns):
+                    finding(errors, path, node.lineno, 'tool_dict_result: registered handlers must return json.dumps strings')
+                elif not any(isinstance(n, ast.Call) and name(n.func) == 'json.dumps' for n in ast.walk(node)):
+                    finding(warnings, path, node.lineno, 'tool_result_review: verify all result/error paths serialize JSON strings')
+    if desktop_rest and (not floor_match or tuple(int(v or 0) for v in floor_match.groups()) < (0, 23, 0)):
+        errors.append('plugin.yaml:1: desktop_rest_floor: ctx.rest requires Hermes >=0.23.0')
+    return {'ok': not errors, 'errors': errors, 'warnings': warnings,
+            'scope': 'heuristic runtime source scan; manual review and live tests required'}
+
+
 def check(path: str, catalog_entry: str = "", tokens: bool = True) -> dict:
     if not path:
         return _err("no_path", "path is required", "Pass the plugin directory.")
     plugin = Path(path).expanduser().resolve()
     if not plugin.is_dir():
         return _err("not_dir", f"{plugin} is not a directory", "Pass the plugin directory.")
-    out: dict[str, Any] = {"manifest": check_manifest(plugin)}
+    out: dict[str, Any] = {"manifest": check_manifest(plugin), "security": check_security(plugin)}
     if tokens:
         out["schemas"] = measure_schemas(plugin)
         declared = sorted(out["manifest"].get("declared_tools") or [])

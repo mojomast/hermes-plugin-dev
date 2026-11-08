@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import json
 from pathlib import Path
 
 import yaml
@@ -51,7 +52,11 @@ def test_registered_tools_match_manifest():
 def test_handler_ops():
     ctx = FakeCtx()
     _load_plugin().register(ctx)
-    h = ctx.tools["hello_hermes"]["handler"]
+    raw = ctx.tools["hello_hermes"]["handler"]
+    def h(args):
+        result = raw(args)
+        assert isinstance(result, str)
+        return json.loads(result)
     assert h({"op": "greet", "name": "Ada"}) == {"ok": True, "message": "Hello, Ada!"}
     assert h({"op": "status"})["ok"] is True
     bad = h({"op": "nope"})

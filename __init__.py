@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib.util
 import inspect
+import json
 import sys
 from pathlib import Path
 
@@ -28,7 +29,7 @@ SCAFFOLD_SCHEMA = {
 
 CHECK_SCHEMA = {
     "name": "hpd_check",
-    "description": "Lint a Hermes plugin offline: strict plugin.yaml, provides_tools vs registered, schema token cost (imports register() with a fake host), optional catalog entry.",
+    "description": "Lint a Hermes plugin offline: strict plugin.yaml, provides_tools vs registered, security preflight, schema token cost (imports trusted register() with a fake host), optional catalog entry.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -52,14 +53,14 @@ def _core():
     return mod
 
 
-def _scaffold(args: dict | None = None, **_kw) -> dict:
+def _scaffold(args: dict | None = None, **_kw) -> str:
     a = args or {}
-    return _core().scaffold(str(a.get("target_dir") or ""), str(a.get("name") or ""))
+    return json.dumps(_core().scaffold(str(a.get("target_dir") or ""), str(a.get("name") or "")))
 
 
-def _check(args: dict | None = None, **_kw) -> dict:
+def _check(args: dict | None = None, **_kw) -> str:
     a = args or {}
-    return _core().check(str(a.get("path") or ""), str(a.get("catalog_entry") or ""))
+    return json.dumps(_core().check(str(a.get("path") or ""), str(a.get("catalog_entry") or "")))
 
 
 def _register_tool_compat(register, **kwargs) -> None:

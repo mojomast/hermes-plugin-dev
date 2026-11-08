@@ -65,3 +65,12 @@ stays in the sandboxed frame (disclose that it's not an OS sandbox).
 - Make dark mode work; demos and screenshots look better in it.
 - Give each agent action visible feedback in the pane (highlight, toast); it makes
   demos legible.
+
+
+## Catalog review safety contract
+Dashboard: ship reproducibly built `dashboard/dist/index.js` at the pinned commit, with sources and lockfile. Use `window.__HERMES_PLUGIN_SDK__.React` and `SDK.authedFetch`/documented `SDK.fetchJSON`. Never load React/code from esm.sh or another CDN, read session tokens or grants from parent globals/localStorage/sessionStorage, or monkeypatch `window.fetch`. Host authentication belongs to the SDK.
+
+Desktop: route ALL host API calls through `ctx.rest('/proxy/v1/...')`; never extract stored grants or attach raw authorization headers. Load assets through JSON routes via `ctx.rest`, decode into Blob URLs, and revoke URLs when no longer needed. Bundle `desktop/plugin.js`; set `requires_hermes: ">=0.23.0"` when using this transport (and mirror the floor in catalog metadata). Do not mix dashboard and Desktop transports. Test both surfaces, including asset load failures and unauthenticated errors.
+
+## Capture and pane-to-host results
+Document and test the actual relay request-body limit. One reviewed relay accepted 512 KiB, less than a full-size PNG. Budget the WHOLE serialized JSON payload, including base64 expansion (~4/3), UTF-8 and envelope overhead; leave headroom. Downscale and compress captures before upload, progressively reducing size/quality within a bounded retry budget. Reject still-oversize results explicitly. Check HTTP status/response, never swallow a failed upload. Complete the pending command with a structured error on capture, encode, upload, disconnect or size failure rather than waiting for a timeout. Test just-below/above limits and non-2xx replies. Verify the deployed pane bundle actually contains the fix and reconnect it after restart.

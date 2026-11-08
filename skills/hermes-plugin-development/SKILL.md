@@ -142,7 +142,7 @@ hermes plugins validate <path> --install-deps   # same gate as catalog CI
 
 1. Tests + doctor + validate green. Secret-scan the tree.
 2. Bump `version` in `plugin.yaml` (and `pyproject.toml`); merge to main.
-3. Tag `vX.Y.Z` at that commit → GitHub release.
+3. Only if explicitly authorized, tag `vX.Y.Z` at that commit → GitHub release.
 4. On **your fork** of hermes-agent, branch `catalog/<name>-vX.Y.Z`, add or edit
    **only** `plugin-catalog/<name>.yaml`: full 40-hex `sha` (quoted), quoted
    `version`, capabilities matching the pin, images on GitHub raw hosts pinned
@@ -208,3 +208,7 @@ Other agents can get the same checks with `python hpd_core.py` functions from th
 | `references/verification.md` | What was verified against source, and what wasn't |
 | `templates/hello-hermes/` | Minimal plugin that passes validate + doctor |
 | `templates/catalog/` | Catalog entry + PR body templates |
+
+## Catalog security and live acceptance (mandatory)
+
+Read [security boundaries](references/security-boundaries.md) before implementation. Apply the review contracts in panes, tools-and-hooks, release-and-catalog, testing and verification references. All tool boundaries serialize JSON strings; UI authentication stays inside SDK transports; URL, file and subprocess boundaries fail closed. Run security preflight plus adversarial tests and actual connected-pane/online acceptance before a conditional merge. Never infer posting, tagging or deployment permission from this guide.

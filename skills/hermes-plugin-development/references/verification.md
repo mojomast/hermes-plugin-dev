@@ -41,3 +41,7 @@ Checked on 2026-11-07 against a NousResearch/hermes-agent checkout at commit
 - Exact semantics of `requires_plugins`, `python_runtime: external`, `provides_locales`,
   `capabilities` values: taken from docs tables, not exercised.
 - Stability of ctx methods beyond `public-api.md`.
+
+
+## Automated security preflight
+`hpd_check` includes a non-executing source security scan. Definite unsafe patterns are errors; ambiguous network fetches, subprocess inheritance and handler result flows are review warnings. Findings contain path/line/rule only, not source text or secret values. This is a heuristic preflight, NOT a security proof: aliases, dynamic imports, wrapper call graphs, DNS pinning, path containment, truthful online behavior and live relay delivery require manual review and adversarial tests. Schema measurement imports trusted plugin code; it is not a sandbox. Run `check_security(Path(...))` alone for untrusted source before opting into code execution.

@@ -81,3 +81,9 @@ Fix: close or land one of your open PRs, then retry, or use the compare link
 6. On failure: `git checkout <rollback-sha>`, restart, re-run doctor, report.
 
 Never merge, tag, release, or re-pin without the owner's explicit approval.
+
+
+## Reviewed delta and portable install
+Install only the catalog `subdir` at the exact pin into a clean temporary tree: it must be self-contained without parent-repo files or uncommitted/generated output. Commit required built UI/service/assets/guest documents and bundled skills, with reproducible source + lockfile, or ship runnable source inside that subdir. No install-time developer build assumption. Guard POSIX-only `fcntl` imports with a portable fallback, or truthfully restrict advertised platforms and test unsupported-platform behavior. Keep public INTEGRATION docs neutral: no personal hosts, account names, local deployment instructions or stale catalog claims.
+
+After a requested repin, prepare a point-by-point review response mapping each finding to the changed files/commits and test evidence; name the old and new pin and summarize the delta. Posting a comment, merge, tag, release or catalog change needs the user's authorization: a checklist is not approval. Keep versions consistent across manifest, packaging, portable/Claude metadata and catalog labels. Never invent a self-referential catalog SHA; the catalog pin is a separate explicitly authorized operation.

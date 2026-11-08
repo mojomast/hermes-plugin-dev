@@ -23,3 +23,14 @@
 | Deploy broke prod, no way back | No backup / rollback SHA | Record HEAD + back up before every deploy |
 | Old internal imports break after upgrade | Using non-public Hermes modules | Only `ctx` and documented public API (`public-api.md`) |
 | Demo rejected / over time limit | Video ≥ 90 s for hackathon rules | Cut to ~80–88 s; verify duration with ffprobe |
+
+
+## Catalog review regressions to prevent
+- Arbitrary link fetch → centralized DNS-vetted, connection-pinned, redirect-checked SSRF guard.
+- Profile-key leakage → secret scope only; no key-reading admin operation or full child environment.
+- Blank/unsafe pane → SDK React/auth transport, committed bundles, Desktop ctx.rest plus correct host floor.
+- All tools rejected → serialize every registered result with json.dumps, including errors and plaintext feeds.
+- Pretend online success → disclose offline practice, gate a real online client, reject unsupported operations.
+- Screenshot timeout → budget serialized relay bytes, compress/downscale, check upload responses, deliver explicit errors.
+- Works only in checkout → test catalog subdir alone with committed build output and guarded platform imports.
+- Test-host settings overwritten → restore only temporary changes, never re-enable user-disabled layers.

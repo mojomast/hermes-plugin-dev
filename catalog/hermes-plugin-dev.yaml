@@ -14,7 +14,7 @@ maintainer: mojomast
 tier: community
 category: tools
 requires_hermes: ">=0.21.6"
-version: "0.1.0"
+version: "0.2.0"
 docs_url: https://github.com/mojomast/hermes-plugin-dev#readme
 readme: true
 platforms: []

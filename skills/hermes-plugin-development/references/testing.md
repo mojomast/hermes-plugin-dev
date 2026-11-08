@@ -55,3 +55,9 @@ the changelog; refactors toward composable tools should show the drop.
 
 Secret-scan the tree (gitleaks, trufflehog, or a grep for `sk-`, `ghp_`, `AIza`,
 private hostnames, emails). Never commit `.env`, tokens, or API keys captured from panes.
+
+
+## Live acceptance gate
+Unit tests, fake contexts and doctor are necessary, not end-to-end proof. Before a conditional merge, run the exact build on a live supported Hermes host; confirm the actual pane is connected to the right session, not just that the server answers. Verify tools, UI assets, real online mode (if supported), failure/unsupported paths, capture payload and composer/consumer round-trip. A hidden/stale/disconnected pane is not a pass. Record tested SHA, Hermes version, surfaces, outcomes and remaining gaps; never claim mocked tests prove online success.
+
+Before temporarily enabling a plugin, snapshot only its enablement/settings, existing layers and HUD state. After testing, surgically restore only fields changed by the test, preserving concurrent edits and user-disabled layers; never overwrite the entire host config from a stale backup. Deploy/restart only with permission; keep rollback SHA. Do not merge when required live tests fail or remain blocked.

@@ -155,3 +155,7 @@ Worked examples to learn from: [EOH](https://github.com/mojomast/EOH) ·
 ## License
 
 [MIT](LICENSE)
+
+## Catalog security preflight (v0.2.0)
+
+Checks SDK/auth anti-patterns, credential access, unsafe process environments, private imports, profile paths, insecure URLs and direct dictionary handler returns. Network fetches and complex data flows produce manual-review warnings, not a security guarantee. See the bundled security-boundaries reference for SSRF, file confinement, honest online clients, capture relay budgets and live-host acceptance. Tool results now use JSON strings as required by Hermes.

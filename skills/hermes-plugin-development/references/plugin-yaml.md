@@ -60,3 +60,7 @@ install with `hermes plugins install owner/repo/integration/hermes`, and set
 `subdir: integration/hermes` in the catalog entry. Optionally put a stub manifest at
 the repo root with an impossible `requires_hermes` so a root install refuses
 rather than shipping evals/fixtures.
+
+
+## Review consistency
+Declare all credential aliases in `requires_env`, even optional feed providers; retrieve them via secret scope, not process environment. Desktop `ctx.rest` needs a tested `requires_hermes: ">=0.23.0"` floor in manifest and catalog. Describe offline defaults and explicitly gated online/network/autonomy behavior truthfully. Mirror version labels across packaging/portable metadata and catalog; the catalog SHA always pins an already-existing commit.

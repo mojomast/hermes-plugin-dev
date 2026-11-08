@@ -12,3 +12,6 @@ ln -s "$PWD" ~/.hermes/plugins/hello-hermes && hermes plugins enable hello-herme
 ```
 
 Tested with Hermes vX.Y.Z.
+
+## Safety contract
+This example is entirely offline: it performs no network requests, spawns no subprocesses, reads no credentials, and writes no runtime files. All registered results, including invalid operations, are JSON strings. If extending it, follow the security-boundaries, pane transport and live-acceptance references before adding URLs, files, online mode or UI.

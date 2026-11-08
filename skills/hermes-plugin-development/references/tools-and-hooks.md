@@ -101,3 +101,10 @@ rename or merge tools.
 Use host-owned `ctx.llm` (see `plugin-llm-access.md` in the docs) instead of
 embedding your own agent runtime. `ctx.call_mcp(...)` is default-deny until the
 operator allowlists it for your plugin.
+
+
+## Tool result wire contract
+Every registered handler returns a STRING: `json.dumps(envelope)`, on success, validation failure, exception and unsupported operation. Internal helpers may return dictionaries, but serialize at the registered boundary. Test `isinstance(result, str)` then `json.loads(result)` for every op. Never forward CSV/plaintext upstream feeds directly: wrap them in JSON envelopes, e.g. `{"ok": true, "format": "csv", "data": text}` (including FIRMS/AIS-style responses). Do not stringify dictionaries with `str(dict)`.
+
+## Honest offline and online clients
+Never present a FakeGameClient/demo as a working online integration. Disclose offline simulation and restart persistence in manifest/README/tool descriptions. Online mode requires an explicit user setting such as `network_enabled` and a real authenticated client. Require HTTPS except explicit loopback development; reject credentials in URLs and unsafe redirects/downgrades. Unsupported online operations return a clear `unsupported_operation` JSON error, not fabricated success or silent offline fallback. Test offline defaults, opt-in, authentication, real online read/write effects, disconnects, unsupported ops and persistence independently.

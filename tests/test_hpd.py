@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import json
 from pathlib import Path
 
 import yaml
@@ -17,7 +18,11 @@ class FakeCtx:
     def register_tool(self, name, toolset, schema, handler, check_fn=None, requires_env=None,
                       is_async=False, description="", emoji="", override=False):
         assert name not in self.tools
-        self.tools[name] = (schema, handler)
+        def decoded(args):
+            result = handler(args)
+            assert isinstance(result, str)
+            return json.loads(result)
+        self.tools[name] = (schema, decoded)
 
     def register_skill(self, name, path, description="", frontmatter=None):
         assert Path(path).is_file()

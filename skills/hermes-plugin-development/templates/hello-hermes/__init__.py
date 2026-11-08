@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 from pathlib import Path
 
 TOOLSET = "hello-hermes"
@@ -25,15 +26,15 @@ SCHEMA = {
 }
 
 
-def _handler(args: dict | None = None, **_kwargs) -> dict:
+def _handler(args: dict | None = None, **_kwargs) -> str:
     args = args or {}
     op = args.get("op")
     if op == "status":
-        return {"ok": True, "plugin": "hello-hermes", "version": VERSION}
+        return json.dumps({"ok": True, "plugin": "hello-hermes", "version": VERSION})
     if op == "greet":
         who = str(args.get("name") or "world")[:80]
-        return {"ok": True, "message": f"Hello, {who}!"}
-    return {"ok": False, "code": "bad_op", "error": f"unknown op {op!r}", "fix": "Use op=greet or op=status."}
+        return json.dumps({"ok": True, "message": f"Hello, {who}!"})
+    return json.dumps({"ok": False, "code": "bad_op", "error": f"unknown op {op!r}", "fix": "Use op=greet or op=status."})
 
 
 def _register_tool_compat(register, **kwargs) -> None:
