@@ -3,7 +3,7 @@
 name: hermes-plugin-dev
 title: Hermes Plugin Dev
 repo: https://github.com/mojomast/hermes-plugin-dev
-sha: "0a54cba12b2904071e0ae42d06935fe23e31b3e8"
+sha: "2726e09ee7faf4c7992fb092e26042a651d4e4b3"
 subdir: ""
 description: >-
   Build Hermes plugins with Hermes: bundles the hermes-plugin-development skill plus two
@@ -14,11 +14,11 @@ maintainer: mojomast
 tier: community
 category: tools
 requires_hermes: ">=0.21.6"
-version: "0.2.0"
+version: "0.3.0"
 docs_url: https://github.com/mojomast/hermes-plugin-dev#readme
 readme: true
 platforms: []
-image: https://raw.githubusercontent.com/mojomast/hermes-plugin-dev/0a54cba12b2904071e0ae42d06935fe23e31b3e8/assets/banner.jpg
+image: https://raw.githubusercontent.com/mojomast/hermes-plugin-dev/2726e09ee7faf4c7992fb092e26042a651d4e4b3/assets/banner-v3.jpg
 known_issues: []
 capabilities:
   provides_tools: [hpd_scaffold, hpd_check]
