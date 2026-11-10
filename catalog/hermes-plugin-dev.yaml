@@ -1,12 +1,10 @@
-# Prepared catalog entry. NOT submitted.
-# Do not invent a pin. After an authorized tag v0.3.0 (or a later approved
-# release commit), replace the placeholder sha and the <sha> segment in image
-# URLs, then copy this file to plugin-catalog/hermes-plugin-dev.yaml on a fork
-# of NousResearch/hermes-agent. See docs/SUBMISSION.md.
+# Prepared catalog entry. Copy to plugin-catalog/hermes-plugin-dev.yaml on a
+# fork of NousResearch/hermes-agent when opening the catalog PR.
+# Pinned to the v0.3.0 tag commit (not a later docs follow-up).
 name: hermes-plugin-dev
 title: Hermes Plugin Dev
 repo: https://github.com/mojomast/hermes-plugin-dev
-sha: "0000000000000000000000000000000000000000"
+sha: "1bc5bf5142db3bfc3c0cdf032a7adb4883426825"
 subdir: ""
 description: >-
   Build Hermes plugins with Hermes: bundles the hermes-plugin-development skill plus two
@@ -22,8 +20,7 @@ version: "0.3.0"
 docs_url: https://github.com/mojomast/hermes-plugin-dev#readme
 readme: true
 platforms: []
-# image and screenshots must be pinned to the SAME sha as above and return HTTP 200.
-# image: https://raw.githubusercontent.com/mojomast/hermes-plugin-dev/<sha>/assets/banner-v3.jpg
+image: https://raw.githubusercontent.com/mojomast/hermes-plugin-dev/1bc5bf5142db3bfc3c0cdf032a7adb4883426825/assets/banner-v3.jpg
 known_issues: []
 capabilities:
   provides_tools: [hpd_scaffold, hpd_check]
