@@ -21,7 +21,11 @@
 | Pane APIs fail in frame | Assuming same-origin in `SandboxedFrame` | Use the SDK bridge / backend routes |
 | `requires_hermes` rejected | CalVer or higher than current release | SemVer floor you actually tested |
 | Deploy broke prod, no way back | No backup / rollback SHA | Record HEAD + back up before every deploy |
-| Old internal imports break after upgrade | Using non-public Hermes modules | Only `ctx` and documented public API (`public-api.md`) |
+| Old internal imports break after upgrade | Using non-public Hermes modules; the Sep 2026 `_<topic>` module split removed the old paths outright | Import only `public-api.md` names (`hermes_cli/data/plugin_api.json`); `validate` warns on the rest. Old→new map: `COMPAT_MANIFEST.md` |
+| `validate`: `no core override` | Rebinding a Hermes function/method/module attribute (`setattr`, `sys.modules[...] =`, `mock.patch`) | Use a hook, middleware, provider profile or Desktop SDK slot; if none fits, request the hook upstream |
+| Capability feature does nothing for users | Not declared in `capabilities:`, or declared with a typo (unknown ids are dropped) | Declare it, probe `has_capability`, degrade gracefully; check `hermes plugins capabilities` |
+| Plugin refuses to load on a power user's box | They run `plugins.isolation: host`, which refuses platform adapters, approval transports, Telegram/platform handlers, self-SDK model providers, terminal backends, websocket dashboard routes and monkeypatchers | Document "needs `in_process`" in the README; or drop the in-process surface |
+| Loader logs `unknown manifest field: provides_middleware` | It is a catalog `capabilities:` key, not a manifest field | Keep it in the catalog entry; remove it from `plugin.yaml` |
 | Demo rejected / over time limit | Video ≥ 90 s for hackathon rules | Cut to ~80–88 s; verify duration with ffprobe |
 | Agent approves a stranger's pairing / spends / grants access | Online tool accepted model-supplied codes; autonomy/owner gates bypassed | Return `unsupported_online`; keep approve/revoke/spend **pane-only** (or Hermes approval). A server-side flag is not enough |
 | Dashboard session token sent to another host | Absolute `asset_url` passed to `SDK.authedFetch` | Only relative plugin routes (plus `data:`/`blob:`); never `http(s):` to `authedFetch` |

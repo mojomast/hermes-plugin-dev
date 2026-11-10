@@ -16,5 +16,4 @@ provides_tools:
   - hpd_scaffold
   - hpd_check
 provides_hooks: []
-provides_middleware: []
 requires_env: []

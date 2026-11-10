@@ -3,8 +3,8 @@
 ## 0.3.0 — 2026-11-10
 
 Skill, references, and README updated with catalog-review lessons observed
-between 8 and 10 Nov 2026 (America/Toronto). Version bump only: **no tag,
-no GitHub release, and no catalog PR**.
+between 8 and 10 Nov 2026 (America/Toronto), plus a sync with hermes-agent
+`main` @ `acdc8f1ba6` (2026-11-08).
 
 - New reference: `references/catalog-review-lessons.md`. Coverage includes
   pane-only privileged actions (`unsupported_online` for pairing approve/revoke),
@@ -26,6 +26,14 @@ no GitHub release, and no catalog PR**.
   `postMessage(..., '*')`, wildcard `0.0.0.0` binds, and `null`/`file://`
   origin allowlists.
 - Worked examples now include hyperrizz, stitchslop, TempleOS, and photo-to-part.
+- New references: `references/hooks.md` (46 hook names, return shapes, timeouts)
+  and `references/capabilities-and-isolation.md` (8 capability ids, isolation).
+- `hpd_check` also flags core-override rebinds, imports outside the public
+  plugin API, unknown `plugin.yaml` fields, invalid `kind`, and unknown
+  capability ids.
+- `provides_middleware` is a catalog `capabilities:` key, not a `plugin.yaml`
+  field. `override=True` is gated by the `tools.override` capability (legacy
+  `allow_tool_override` still works).
 
 ## 0.2.0 — 2026-11-08
 

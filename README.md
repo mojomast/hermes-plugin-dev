@@ -48,7 +48,7 @@ also gives the Hermes agent two small tools to build plugins itself.
 
 | | |
 |---|---|
-| 🧠 **Agent Skill** | [`skills/hermes-plugin-development/`](skills/hermes-plugin-development/SKILL.md): a short core guide plus deep-dive references (manifest, `ctx` API, panes, testing, release & catalog, review lessons, pitfalls, hackathons, worked examples, verification). |
+| 🧠 **Agent Skill** | [`skills/hermes-plugin-development/`](skills/hermes-plugin-development/SKILL.md): a short core guide plus 13 deep-dive references (manifest, `ctx` API, all 46 hooks, capabilities & isolation, panes, testing, release & catalog, review lessons, pitfalls, hackathons, worked examples, verification). |
 | 🧩 **Template plugin** | [`templates/hello-hermes`](skills/hermes-plugin-development/templates/hello-hermes): a minimal plugin that passes `hermes plugins validate` and `doctor --ci` as-is, with a fake-host test, strict-YAML check, version bump script and schema-token meter. |
 | 📋 **Catalog kit** | [Catalog entry](skills/hermes-plugin-development/templates/catalog/plugin-catalog-entry.yaml) and [PR body](skills/hermes-plugin-development/templates/catalog/PR_BODY.md) templates matching the upstream schema, including the 6-screenshot cap. |
 | 🛠️ **Hermes plugin** | `plugin.yaml` + `register(ctx)` at the repo root: bundles the skill and adds **2 lean tools** (190 o200k tokens total, measured with tiktoken `o200k_base`). |
@@ -207,6 +207,27 @@ Worked examples to learn from: [EOH](https://github.com/mojomast/EOH) ·
 ## License
 
 [MIT](LICENSE)
+
+## What's new in 0.3.0
+
+Catalog-review lessons from 8–10 Nov 2026, plus a sync with `hermes-agent`
+`main` (verified @ `acdc8f1ba6`, 2026-11-08):
+
+- **`hpd_check` now mirrors the newer admission lints** — core-override rebinds
+  (`setattr`/`sys.modules`/`mock.patch` on Hermes internals) are errors, imports
+  outside the generated public plugin API (`hermes_cli/data/plugin_api.json`) are
+  warnings, and `plugin.yaml` gets unknown-field, `kind` and capability-id checks.
+  Absolute `http(s):` URLs passed to `authedFetch` are errors; wildcard binds,
+  `postMessage(..., '*')`, and `null`/`file://` origin allowlists are warnings.
+- **Two new skill references**: `hooks.md` (all 46 hook names by family, the
+  observer/transform/directive/policy return shapes, timeout rules) and
+  `capabilities-and-isolation.md` (the 8 consent-gated capability ids, and what
+  `plugins.isolation: host` refuses to load). Catalog review contracts live in
+  `catalog-review-lessons.md`.
+- **Corrections**: `provides_middleware` is a catalog `capabilities:` key, not a
+  `plugin.yaml` field (the old template logged an unknown-field warning);
+  `override=True` is gated by the `tools.override` capability, not only the legacy
+  `allow_tool_override` boolean.
 
 ## Catalog security preflight (v0.3.0)
 
