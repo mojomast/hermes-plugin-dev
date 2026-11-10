@@ -11,9 +11,12 @@ license: MIT
 # Hermes plugin development
 
 Field guide distilled from shipping several community Hermes plugins (map/OSINT
-dashboard, virtual pets game, live-coding music studio, video tooling). Every API
-and CLI claim here was checked against hermes-agent source; see
-`references/verification.md` for exactly what was checked and on which commit.
+dashboard, virtual pets game, live-coding music studio, video tooling, a shared
+QEMU screen, a film studio, an embroidery bridge) and from catalog reviews of
+those plugins through 10 Nov 2026. Every API and CLI claim here was checked
+against hermes-agent source or, where noted, against those reviews; see
+`references/verification.md`. Hook names, capabilities, and admission lints were
+re-verified against hermes-agent `main` at `acdc8f1ba6` (2026-11-08).
 **When this file and the live Hermes source/docs disagree, the source wins.**
 
 Canonical upstream docs (paths inside `NousResearch/hermes-agent`):
@@ -65,7 +68,7 @@ api_version: 1
 name: my-plugin            # [a-z0-9_-]{1,64}; the catalog key
 version: "0.1.0"           # QUOTE IT
 description: What it does. Disclosure: network, subprocesses, threads, credentials.
-requires_hermes: ">=0.21.6"   # SemVer floor only
+requires_hermes: ">=0.21.6"   # SemVer floor only; ">=0.23.0" if you use Desktop ctx.rest
 provides_tools: [my_tool]     # must equal what register() registers
 provides_hooks: []
 requires_env: []
@@ -107,10 +110,17 @@ ctx.register_tool(name, toolset, schema, handler, check_fn=None, requires_env=No
   composable tools with an `op` enum over dozens of tiny ones (one plugin went
   from ~70 tools to 11). Measure with tiktoken `o200k_base` before/after and
   report the delta (`templates/hello-hermes/scripts/measure_schemas.py`).
-- Return structured JSON: `{"ok": false, "code": ..., "error": ..., "fix": ...}`
-  so the agent can recover by itself.
+- Return a **JSON string** (`json.dumps`) with
+  `{"ok": false, "code": ..., "error": ..., "fix": ...}` so the agent can
+  recover. Scrub secrets from those fields. Handlers that return dicts are
+  rejected by the host.
 - Hook callbacks should accept `**kwargs`; payloads gain fields over time
   (46 hook names at the verified commit — `references/hooks.md`).
+- Tools that run a model-named script need a `pre_tool_call` approval hook
+  (`{"action": "approve", ...}`) and a `provides_hooks` entry. Hooks that fire
+  on every call must not police the user's other projects.
+- Privileged online actions (pairing, spend, device grants) stay **pane-only**
+  or go through that approval prompt — see `references/catalog-review-lessons.md`.
 - `override=True` needs the `tools.override` capability granted (or the legacy
   `plugins.entries.<id>.allow_tool_override: true`); otherwise it raises.
 - `ctx.call_mcp` is default-deny (per-plugin MCP allowlist).
@@ -121,26 +131,36 @@ ctx.register_tool(name, toolset, schema, handler, check_fn=None, requires_env=No
 
 - `ctx.register_skill(name, path)` makes a read-only skill resolvable as
   `<plugin_name>:<name>` via `skill_view`. Keep skill text in sync with tool names.
+  If Hermes Tool Search defers your tools, the skill and a system-prompt section
+  should name them and tell the agent to `tool_search` / `skill_view`.
 - Persist state with `plugins.plugin_storage.plugin_data_dir(name)` /
   `plugin_db(name)`: profile-aware, survives updates. Never write into the checkout.
 - **Secrets:** declare in `requires_env` (or `config_schema` secret), read with
   `agent.secret_scope.get_secret(NAME)`. No `.env` file reads, no raw process-environment
   fallbacks, no vendor CLI/browser/keychain token scraping (catalog rule 11).
   Token files you create yourself: mode `0600`, never logged.
-- **Respect user choices.** Never re-enable a layer, feature, or setting the user
-  turned off; persist "off" and treat it as authoritative across restarts and updates.
+- **Respect user choices.** Never re-enable a layer, feature, companion, or
+  setting the user turned off; persist "off" and treat it as authoritative
+  across restarts and updates.
 
 ## 5. UI surfaces (`references/panes.md`)
 
 - **Dashboard tab:** `dashboard/manifest.json` + an IIFE bundle using
-  `window.__HERMES_PLUGIN_SDK__` (don't bundle React). Optional `plugin_api.py`
-  routes mount at `/api/plugins/<name>/`.
+  `window.__HERMES_PLUGIN_SDK__` (don't bundle React; import hooks from `react`,
+  not `react/jsx-runtime`). Optional `plugin_api.py` routes mount at
+  `/api/plugins/<name>/`. **Never pass an absolute `http(s):` URL to
+  `SDK.authedFetch`** — only relative plugin routes, or you leak the session token.
 - **An already-mounted `/api/plugins/<name>/` route is not re-mounted.** After
   changing `plugin_api.py`, restart the gateway/dashboard process. The
   `/api/dashboard/plugins/rescan` endpoint is for discovering newly added plugins.
+  Enabling the desktop half does not import Python by itself.
 - **Desktop pane:** `desktop/plugin.js` importing only `@hermes/plugin-sdk` (and `react`).
   Guest content runs in `SandboxedFrame` (opaque origin). No prototype patching,
-  `eval`, app-chunk imports, or core DOM scraping (catalog rule 8).
+  `eval`, app-chunk imports, or core DOM scraping (catalog rule 8). Use `ctx.rest`
+  and set `requires_hermes: ">=0.23.0"`.
+- Default to **dark mode**. Shared screens need Watch / Shared / Take control.
+  Live frames come from a background cache so polling does not starve the
+  gateway. Loopback relays are token-gated on every route and bind `127.0.0.1`.
 
 ## 6. Test (`references/testing.md`)
 
@@ -158,16 +178,21 @@ hermes plugins validate <path> --install-deps   # same gate as catalog CI
   superuser command word (su+do), env-dump or filesystem-format commands, or raw
   environment reads trips `sudo_usage`-style findings and can fail `validate`.
   Rephrase docs and strings, or explain the finding in the PR.
+- Before asking for a catalog review, also do a **scratch-home catalog install**
+  and a live connected-pane test. After a test on a shared host, restore the
+  plugin's prior enablement (disable it if it was off).
 
 ## 7. Release → catalog (`references/release-and-catalog.md`)
 
 1. Tests + doctor + validate green. Secret-scan the tree.
 2. Bump `version` in `plugin.yaml` (and `pyproject.toml`); merge to main.
 3. Only if explicitly authorized, tag `vX.Y.Z` at that commit → GitHub release.
+   A version bump is not a tag.
 4. On **your fork** of hermes-agent, branch `catalog/<name>-vX.Y.Z`, add or edit
    **only** `plugin-catalog/<name>.yaml`: full 40-hex `sha` (quoted), quoted
    `version`, capabilities matching the pin, images on GitHub raw hosts pinned
-   to the same sha and returning HTTP 200.
+   to the same sha and returning HTTP 200. At most **6 screenshots** (the
+   validator refuses 7). Never invent a self-referential SHA.
 5. `python scripts/validate_plugin_catalog.py plugin-catalog/<name>.yaml`.
 6. Open the PR from the fork (`templates/catalog/PR_BODY.md`). Every SHA bump is a new PR.
 
@@ -175,7 +200,9 @@ hermes plugins validate <path> --install-deps   # same gate as catalog CI
 on NousResearch/hermes-agent. Over that, `CreatePullRequest` fails with a
 permissions error from the CLI, API and GitHub-App integrations alike, even
 though your auth is fine. Close or land one, or open it in the web UI from
-the compare link once a slot is free.
+the compare link once a slot is free. Closing a PR to free a slot is not a
+review verdict; resubmit later. Reviewers may approve and then come back
+after a full-tree re-read — answer point-by-point with old → new sha.
 
 ## 8. Deploy to a running Hermes (`references/release-and-catalog.md`)
 
@@ -183,7 +210,8 @@ Get the owner's OK first. Back up the checkout and record the current HEAD as
 the **rollback SHA**. Check out the target, install deps if changed, restart only
 what's needed (gateway for `plugin_api.py`/hook changes), then `hermes plugins
 doctor <id>` and exercise one real tool. On failure: check out the rollback SHA,
-restart, re-run doctor.
+restart, re-run doctor. After a live test on a shared host, surgically restore
+only the enablement you changed.
 
 ## 9. Top pitfalls (full table: `references/pitfalls.md`)
 
@@ -197,6 +225,10 @@ restart, re-run doctor.
 | `CreatePullRequest` permission error | 5-open-PR cap or not from a fork; free a slot. |
 | Context bloat / slow turns | Fewer composable tools; measure o200k. |
 | validate security scan fails on docs | Scanner reads Markdown too; reword risky command words. |
+| Agent grants pairing / spend | Keep it pane-only (`unsupported_online`) or require Hermes approval. |
+| Session token sent to another host | Never pass an absolute URL to `authedFetch`. |
+| Anyone on the LAN drives the viewer | Token on every route; bind loopback; allowlist `nav`. |
+| Chat timeouts while the pane is open | Background frame cache; cap fps. |
 | validate: `no core override` / `private import` | Patch through hooks/middleware/ctx, not `setattr` on Hermes modules; import only `public-api.md` names. |
 | Feature silently off after install | Capability not declared/consented; declare it in `capabilities:` and probe `has_capability`. |
 | `register_platform`/approval/Telegram plugin fails to load | User runs `plugins.isolation: host`; those surfaces need `in_process`. |
@@ -206,16 +238,18 @@ restart, re-run doctor.
 
 See `references/hackathon-submission.md`: open catalog PR (needn't be merged),
 demo video under 90 s posted on X tagging the organiser, submission form.
-Never post or submit on someone's behalf without their explicit yes.
+Shoot in dark mode; start videos on a finished hero frame. Never post or
+submit on someone's behalf without their explicit yes.
 
 ## Companion tools (when installed as the hermes-plugin-dev Hermes plugin)
 
 - `hpd_scaffold(target_dir, name)`: copy `templates/hello-hermes` into a new or empty
   folder, renamed, with a catalog entry and PR body stub.
 - `hpd_check(path, catalog_entry?)`: offline lint covering strict YAML, manifest rules,
-  `provides_tools` vs registered, schema o200k tokens, core-override rebinds,
-  imports outside the public API, and catalog entry rules. Then run
-  `hermes plugins doctor` and `validate` in a terminal for the authoritative gate.
+  `provides_tools` vs registered, security preflight, schema o200k tokens,
+  core-override rebinds, imports outside the public API, and catalog entry
+  rules (including the 6-screenshot cap). Then run `hermes plugins doctor` and
+  `validate` in a terminal for the authoritative gate.
 
 Other agents can get the same checks with `python hpd_core.py` functions from the repo.
 
@@ -227,16 +261,27 @@ Other agents can get the same checks with `python hpd_core.py` functions from th
 | `references/tools-and-hooks.md` | `ctx` API, schema design, skills, secrets, storage |
 | `references/hooks.md` | Every hook name + payload notes |
 | `references/capabilities-and-isolation.md` | Capability ids, consent, `plugins.isolation` |
-| `references/panes.md` | Dashboard and desktop panes |
-| `references/testing.md` | Fake ctx, mock host, doctor, validate, scanner |
+| `references/panes.md` | Dashboard and desktop panes, relays, dark mode, frame cache |
+| `references/testing.md` | Fake ctx, mock host, doctor, validate, scanner, live gate |
 | `references/release-and-catalog.md` | Versioning, tags, catalog entry, PRs, deploy, rollback |
+| `references/catalog-review-lessons.md` | Review contracts from Nov 2026 catalog threads |
 | `references/pitfalls.md` | Symptom → cause → fix |
 | `references/hackathon-submission.md` | Demo + submission playbook |
 | `references/worked-examples.md` | Public plugin repos to study |
 | `references/verification.md` | What was verified against source, and what wasn't |
+| `references/security-boundaries.md` | SSRF, secrets, path confinement, honest clients |
 | `templates/hello-hermes/` | Minimal plugin that passes validate + doctor |
 | `templates/catalog/` | Catalog entry + PR body templates |
 
 ## Catalog security and live acceptance (mandatory)
 
-Read [security boundaries](references/security-boundaries.md) before implementation. Apply the review contracts in panes, tools-and-hooks, release-and-catalog, testing and verification references. All tool boundaries serialize JSON strings; UI authentication stays inside SDK transports; URL, file and subprocess boundaries fail closed. Run security preflight plus adversarial tests and actual connected-pane/online acceptance before a conditional merge. Never infer posting, tagging or deployment permission from this guide.
+Read [security boundaries](references/security-boundaries.md) and
+[catalog review lessons](references/catalog-review-lessons.md) before
+implementation. Apply the review contracts in panes, tools-and-hooks,
+release-and-catalog, testing and verification references. All tool boundaries
+serialize JSON strings; UI authentication stays inside SDK transports; URL,
+file and subprocess boundaries fail closed. Untrusted feed text is data, not
+instructions. Privileged account actions stay in the pane. Run security
+preflight plus adversarial tests and actual connected-pane/online acceptance
+before a conditional merge. Never infer posting, tagging or deployment
+permission from this guide.

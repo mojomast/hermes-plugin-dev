@@ -1,15 +1,19 @@
-# Prepared catalog entry. NOT submitted. Copy to plugin-catalog/hermes-plugin-dev.yaml on a
-# fork of NousResearch/hermes-agent when ready (re-pin to a tagged release commit first).
+# Prepared catalog entry. NOT submitted.
+# Do not invent a pin. After an authorized tag v0.3.0 (or a later approved
+# release commit), replace the placeholder sha and the <sha> segment in image
+# URLs, then copy this file to plugin-catalog/hermes-plugin-dev.yaml on a fork
+# of NousResearch/hermes-agent. See docs/SUBMISSION.md.
 name: hermes-plugin-dev
 title: Hermes Plugin Dev
 repo: https://github.com/mojomast/hermes-plugin-dev
-sha: "2726e09ee7faf4c7992fb092e26042a651d4e4b3"
+sha: "0000000000000000000000000000000000000000"
 subdir: ""
 description: >-
   Build Hermes plugins with Hermes: bundles the hermes-plugin-development skill plus two
   offline tools to scaffold a plugin from a validated template and lint manifests, catalog
-  entries and schema token cost. No network, subprocesses or credentials; writes only into
-  the target folder you name; the lint imports the target plugin's register() with a fake host.
+  entries, security preflight and schema token cost. No network, subprocesses or credentials;
+  writes only into the target folder you name; the lint imports the target plugin's
+  register() with a fake host. The security preflight is a heuristic, not a proof.
 maintainer: mojomast
 tier: community
 category: tools
@@ -18,7 +22,8 @@ version: "0.3.0"
 docs_url: https://github.com/mojomast/hermes-plugin-dev#readme
 readme: true
 platforms: []
-image: https://raw.githubusercontent.com/mojomast/hermes-plugin-dev/2726e09ee7faf4c7992fb092e26042a651d4e4b3/assets/banner-v3.jpg
+# image and screenshots must be pinned to the SAME sha as above and return HTTP 200.
+# image: https://raw.githubusercontent.com/mojomast/hermes-plugin-dev/<sha>/assets/banner-v3.jpg
 known_issues: []
 capabilities:
   provides_tools: [hpd_scaffold, hpd_check]

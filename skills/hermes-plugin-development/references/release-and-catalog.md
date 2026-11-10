@@ -23,8 +23,12 @@ Schema: `plugin-catalog/README.md` "Entry schema". Template:
 - `category`: desktop | memory | platform | web | tools | voice | automation | models | general.
 - `version`: quoted cosmetic label. Bump with the sha.
 - `image` (2:1) and up to 6 `screenshots`: https on `raw.githubusercontent.com`,
-  `github.com` or `*.githubusercontent.com`, pinned to the same sha. **Each must return
-  HTTP 200**; check with `curl -sI -o /dev/null -w '%{http_code}' URL`.
+  `github.com` or `*.githubusercontent.com`, pinned to the same sha. The catalog
+  page shows at most 6 shots and the **validator refuses 7**. `image` does not
+  count toward the 6. **Each URL must return HTTP 200**; check with
+  `curl -sI -o /dev/null -w '%{http_code}' URL`. Shoot them in Hermes dark mode,
+  with no hostnames, keys or private data in frame. Video plugins should open
+  on a finished hero frame so frame 0 (and the thumbnail) is not blank.
 - `readme: true` renders the README **at the pinned sha** on the docs site; make it good.
 - `capabilities` must match what `register()` does at the pin (rule 6).
 
@@ -34,11 +38,16 @@ Validate structurally inside a hermes-agent checkout:
 python scripts/validate_plugin_catalog.py plugin-catalog/<name>.yaml   # --json available
 ```
 
-Then the behavioural gate on a clean clone at the pin:
+Then the behavioural gate on a clean clone at the pin, and a **real catalog
+install in a scratch `HERMES_HOME`** (reviewers do this):
 
 ```bash
 git clone https://github.com/<owner>/<repo> /tmp/p && git -C /tmp/p checkout <sha>
 hermes plugins validate /tmp/p[/<subdir>] --install-deps
+
+# After the catalog PR exists, in a throwaway home:
+# HERMES_HOME=/tmp/hermes-scratch hermes plugins install <name> --enable
+# confirm the installed sha equals the pin and every declared tool registers
 ```
 
 ## Opening the PR
@@ -79,8 +88,13 @@ Fix: close or land one of your open PRs, then retry, or use the compare link
 5. `hermes plugins doctor <id>` and `hermes plugins list`: check tool/hook counts,
    then exercise one real tool end to end.
 6. On failure: `git checkout <rollback-sha>`, restart, re-run doctor, report.
+7. After a live test on a **shared** host: surgically restore only the
+   enablement and settings you changed. If the plugin was not enabled
+   before the test, disable it again. Do not leave a test enablement on,
+   and do not overwrite the rest of the host config from a stale backup.
 
 Never merge, tag, release, or re-pin without the owner's explicit approval.
+A tag is not implied by bumping `version` in the manifest.
 
 
 ## Reviewed delta and portable install

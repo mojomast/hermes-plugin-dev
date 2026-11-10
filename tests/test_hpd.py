@@ -106,7 +106,34 @@ def test_repo_catalog_entry_is_valid():
     if entry.is_file():
         sys.path.insert(0, str(ROOT))
         import hpd_core
-        assert hpd_core.check_catalog(entry)["ok"]
+        result = hpd_core.check_catalog(entry)
+        # The prepared entry may use the placeholder sha until an authorized
+        # tag exists. Every other catalog rule must still pass.
+        leftover = [e for e in result["errors"] if "placeholder" not in e]
+        assert leftover == [], leftover
+        assert result.get("warnings") is not None
+
+
+def test_catalog_rejects_more_than_six_screenshots(tmp_path):
+    sys.path.insert(0, str(ROOT))
+    import hpd_core
+    entry = tmp_path / "e.yaml"
+    shots = "\n".join(
+        f'  - https://raw.githubusercontent.com/acme/p/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/{i}.png'
+        for i in range(7)
+    )
+    entry.write_text(
+        "name: demo\n"
+        "repo: https://github.com/acme/p\n"
+        'sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"\n'
+        "category: tools\n"
+        "tier: community\n"
+        "version: \"0.1.0\"\n"
+        "screenshots:\n" + shots + "\n"
+    )
+    out = hpd_core.check_catalog(entry)
+    assert not out["ok"]
+    assert any("6 screenshot" in e for e in out["errors"])
 
 
 def test_core_override_is_refused(tmp_path):

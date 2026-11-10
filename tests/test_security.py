@@ -81,3 +81,32 @@ def test_requires_env_declaration(tmp_path):
     assert any('secret_declaration' in w for w in check_security(tmp_path)['warnings'])
     (tmp_path/'plugin.yaml').write_text('requires_env: [SERVICE_KEY]')
     assert not check_security(tmp_path)['warnings']
+
+
+def test_authed_fetch_and_relay_warnings(tmp_path):
+    dash = tmp_path / "dashboard"
+    dash.mkdir()
+    (dash / "pane.js").write_text('SDK.authedFetch("https://other.host/x.png")')
+    out = check_security(tmp_path)
+    assert not out["ok"]
+    assert any("authed_fetch_absolute" in e for e in out["errors"])
+
+    (dash / "pane.js").write_text('SDK.authedFetch(assetUrl)')
+    out = check_security(tmp_path)
+    assert out["ok"] and any("authed_fetch_url" in w for w in out["warnings"])
+
+    (dash / "pane.js").write_text("SDK.authedFetch('/api/plugins/demo/item')")
+    out = check_security(tmp_path)
+    assert out["ok"] and not any("authed_fetch" in w for w in out["warnings"])
+
+    (dash / "pane.js").write_text("frame.postMessage(cfg, '*')")
+    out = check_security(tmp_path)
+    assert out["ok"] and any("postmessage_wildcard" in w for w in out["warnings"])
+
+
+def test_wildcard_bind_and_null_origin(tmp_path):
+    (tmp_path / "runtime.py").write_text('host = "0.0.0.0"\nALLOWED_ORIGIN = "null"\n')
+    out = check_security(tmp_path)
+    assert out["ok"]
+    assert any("wildcard_bind" in w for w in out["warnings"])
+    assert any("cors_null_origin" in w for w in out["warnings"])
