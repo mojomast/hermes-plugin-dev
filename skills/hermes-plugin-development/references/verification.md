@@ -45,3 +45,31 @@ Checked on 2026-11-07 against a NousResearch/hermes-agent checkout at commit
 
 ## Automated security preflight
 `hpd_check` includes a non-executing source security scan. Definite unsafe patterns are errors; ambiguous network fetches, subprocess inheritance and handler result flows are review warnings. Findings contain path/line/rule only, not source text or secret values. This is a heuristic preflight, NOT a security proof: aliases, dynamic imports, wrapper call graphs, DNS pinning, path containment, truthful online behavior and live relay delivery require manual review and adversarial tests. Schema measurement imports trusted plugin code; it is not a sandbox. Run `check_security(Path(...))` alone for untrusted source before opting into code execution.
+
+## Observed in catalog reviews (8–10 Nov 2026, America/Toronto)
+
+Not all of these are in hermes-agent source; they are contracts reviewers
+enforced on community plugins. Local Hermes CLI at the time of this note:
+**Hermes Agent v0.23.0** (`2bd378ed1b8d`).
+
+| Claim | Where it was observed |
+|---|---|
+| Catalog validator refuses a 7th screenshot; the listing shows at most 6 | teknium1 on Eye Of Hermes #149691 (pushed `8311f912` on the catalog branch to drop one shot) |
+| Reviewers may approve, then request changes after a full-tree re-read | #149691 and #150358 "correction to our approval" |
+| Pairing approve/revoke (and similar account grants) must be pane-only in online mode; `unsupported_online` for model-supplied codes | teknium1 on Hermagotchi #150358; fixed in mojomast/hermagotchi#9 |
+| `SDK.authedFetch` must not be given absolute `http(s):` asset URLs (session token leak) | #150358 correction |
+| Untrusted feed text must not be "trust"ed in a system prompt; strip controls; quote as data | #149691 correction |
+| Relay token on unauthenticated GET / `null` origins / `0.0.0.0` bind / unconstrained browser `nav` are blockers | stitchslop #151946 |
+| Write-then-execute of plugin scripts is listable if disclosed; loopback studio servers should check Host/Origin | hyperrizz #151945 (approved, merged) |
+| `pre_tool_call` approval for model-named script runners; write confinement via `get_write_denied_error` | photo-to-part #148018 |
+| Session-wide hooks must not block unrelated user projects | #148018 second review |
+| 5-open-PR cap; closing a catalog PR to free a slot is normal | #148687 and #148018 closed 9 Nov 2026 by the submitter |
+| Reviewers install from the catalog in a scratch home and check sha + tool count | #149691, #150358, #151945 approval notes |
+| Dark-mode pane, background frame cache so `/frame` does not starve the gateway, React hooks from `react` | mojomast/hermes-templeos (pane/theme/improvements) |
+| Reattach to a live sidecar after a gateway restart | hermes-templeos unreleased notes |
+| Video frame 0 / thumbnail should be a finished hero frame, not blank | hyperrizz v2.1.0, shortrizz v0.6.0 |
+| Leftover `urlopen` bypasses the SSRF guard; scrub secrets from tool errors | EOH audit PR #29 (open at the time of writing; treat as a required contract) |
+
+The 5-open-PR cap, scanner-on-Markdown behaviour, and ~70 → 11 tool figures
+remain "observed in practice" as above.
+

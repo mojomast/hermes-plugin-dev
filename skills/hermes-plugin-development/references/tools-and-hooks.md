@@ -61,6 +61,19 @@ Each exposed tool schema costs context on every turn.
 Accept `**kwargs` in callbacks; payloads grow. If you need several behaviours on
 one hook, compose them in a single callback. Declare every hook in `provides_hooks`.
 
+A tool that runs a model-named script (or anything with equivalent power) must
+go through Hermes's approval prompt: register `pre_tool_call`, and when
+`tool_name` matches, return
+`{"action": "approve", "message": "Run <script> <args> in <cwd>", "rule_key": "<tool>"}`.
+Return `None` for every other tool. The `approve`/`modify` actions first ship
+in Hermes 0.21.5; declare `requires_hermes: ">=0.21.5"` (and `>=0.23.0` if
+you also use Desktop `ctx.rest`).
+
+Hooks that fire on every tool call in every session must not police the user's
+other projects. If you guard eval paths or log calls, return `None` unless the
+target resolves inside your plugin checkout (or behind an env flag only your
+runner sets). Disclose it if you log other tools' names and file paths.
+
 ## Bundled skills
 
 ```python
@@ -107,4 +120,21 @@ operator allowlists it for your plugin.
 Every registered handler returns a STRING: `json.dumps(envelope)`, on success, validation failure, exception and unsupported operation. Internal helpers may return dictionaries, but serialize at the registered boundary. Test `isinstance(result, str)` then `json.loads(result)` for every op. Never forward CSV/plaintext upstream feeds directly: wrap them in JSON envelopes, e.g. `{"ok": true, "format": "csv", "data": text}` (including FIRMS/AIS-style responses). Do not stringify dictionaries with `str(dict)`.
 
 ## Honest offline and online clients
-Never present a FakeGameClient/demo as a working online integration. Disclose offline simulation and restart persistence in manifest/README/tool descriptions. Online mode requires an explicit user setting such as `network_enabled` and a real authenticated client. Require HTTPS except explicit loopback development; reject credentials in URLs and unsafe redirects/downgrades. Unsupported online operations return a clear `unsupported_operation` JSON error, not fabricated success or silent offline fallback. Test offline defaults, opt-in, authentication, real online read/write effects, disconnects, unsupported ops and persistence independently.
+Never present a FakeGameClient/demo as a working online integration. Disclose offline simulation and restart persistence in manifest/README/tool descriptions. Online mode requires an explicit user setting such as `network_enabled` and a real authenticated client. Require HTTPS except explicit loopback development; reject credentials in URLs and unsafe redirects/downgrades. Unsupported online operations return a clear `unsupported_operation` or `unsupported_online` JSON error, not fabricated success or silent offline fallback. Test offline defaults, opt-in, authentication, real online read/write effects, disconnects, unsupported ops and persistence independently.
+
+Privileged online actions — approving or revoking a pairing, spending, granting
+a device session — stay **pane-only** (or behind Hermes's approval prompt). Do
+not accept a model-supplied code for those ops; a server-side policy flag is
+not enough, because the trigger can come from another player's message.
+Classify online effects as online for autonomy gates (`local.*` is the wrong
+bucket). Do not flip security modes from raw process-environment fallbacks
+that bypass the documented `config_schema` setting.
+
+Third-party feed text (alerts, lobby messages, ship names, OSM names) is
+untrusted data: strip newlines and control characters, wrap it in a marked
+field, and never tell the model in a system-prompt section to "trust" it.
+
+If a tool can write scripts or `package.json` and a later op executes them
+with the user's permissions, say so in the description. That is file-write
+plus terminal power. Scrub secrets and credential-shaped text out of `error`
+/ `message` / `fix` before they leave the handler.

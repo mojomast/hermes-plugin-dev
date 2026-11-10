@@ -1,7 +1,7 @@
 manifest_version: 2
 api_version: 1
 name: hermes-plugin-dev
-version: "0.2.0"
+version: "0.3.0"
 description: >-
   Build Hermes plugins with Hermes. Bundles the hermes-plugin-development skill and two
   offline tools: scaffold a plugin from a validated template, and lint a plugin

@@ -259,6 +259,21 @@ def check_security(plugin: Path) -> dict:
                 for pattern, rule in patterns:
                     if re.search(pattern, source, re.I):
                         finding(errors, path, line, rule)
+                if re.search(r'authedFetch\s*\(\s*[\'\"]https?:', source):
+                    finding(errors, path, line, 'authed_fetch_absolute: pass only relative plugin routes to authedFetch, never absolute http(s) URLs')
+                elif re.search(r'authedFetch\s*\(', source) and not re.search(r'authedFetch\s*\(\s*[\'\"](?:/|data:|blob:)', source):
+                    finding(warnings, path, line, 'authed_fetch_url: pass only relative plugin routes to authedFetch, never absolute http(s) URLs')
+                if re.search(r'postMessage\s*\([^\n;]*[\'\"]\*[\'\"]', source):
+                    finding(warnings, path, line, 'postmessage_wildcard: pin the target origin; do not broadcast with *')
+            if re.search(r'[\'\"]0\.0\.0\.0[\'\"]', source) or re.search(r'\bbind\([^\n;]*0\.0\.0\.0|\blisten\([^\n;]*0\.0\.0\.0', source):
+                finding(warnings, path, line, 'wildcard_bind: refuse 0.0.0.0 / public binds by default; loopback only, tailnet as explicit opt-in')
+            # Build the pattern from parts so this file does not trip the rule.
+            cors_names = "ALLOW" + "(?:ED)?_ORIGIN" + "S?"
+            cors_bad = r"(?:['\"]null['\"]|file" + ":)"
+            if re.search(cors_names + r".{0,80}" + cors_bad, source, re.I) or re.search(
+                r"Access-Control-Allow-Origin.{0,80}" + cors_bad, source, re.I
+            ):
+                finding(warnings, path, line, 'cors_null_origin: drop null and file:// from origin allowlists')
             if re.search(r'~[/]\.hermes', source) or re.search(r'Path\.home\(\)\s*/\s*[\'\"]\.hermes', source):
                 finding(errors, path, line, 'profile_path: use get_hermes_home()')
             for url in re.findall(r'http://[^\s\'\"<>`]+', source):

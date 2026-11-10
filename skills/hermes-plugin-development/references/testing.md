@@ -61,3 +61,17 @@ private hostnames, emails). Never commit `.env`, tokens, or API keys captured fr
 Unit tests, fake contexts and doctor are necessary, not end-to-end proof. Before a conditional merge, run the exact build on a live supported Hermes host; confirm the actual pane is connected to the right session, not just that the server answers. Verify tools, UI assets, real online mode (if supported), failure/unsupported paths, capture payload and composer/consumer round-trip. A hidden/stale/disconnected pane is not a pass. Record tested SHA, Hermes version, surfaces, outcomes and remaining gaps; never claim mocked tests prove online success.
 
 Before temporarily enabling a plugin, snapshot only its enablement/settings, existing layers and HUD state. After testing, surgically restore only fields changed by the test, preserving concurrent edits and user-disabled layers; never overwrite the entire host config from a stale backup. Deploy/restart only with permission; keep rollback SHA. Do not merge when required live tests fail or remain blocked.
+
+Live tests include a connected pane (right session, not merely a 200 from the
+server), real online mode if you claim it, unsupported/privileged paths
+(`unsupported_online` for pane-only ops), capture payload limits, and a
+scratch-home `hermes plugins install <name> --enable` that checks the pin and
+tool count. Optional extras (`tiktoken`, `ruamel.yaml`) should skip with an
+install hint when missing, rather than crashing contributor runs. Keep test
+dependencies out of the extra Hermes will install with the plugin.
+
+`hpd_check`'s security preflight also flags (as errors or review warnings)
+absolute URLs passed to `authedFetch`, `postMessage(..., '*')`, wildcard
+`0.0.0.0` binds, and `null`/`file://` origin allowlists. Those are heuristics,
+not a proof.
+

@@ -7,8 +7,46 @@ Treat model arguments, pin links, OSM website tags and upstream redirect locatio
 Test localhost, metadata addresses, mixed public/private DNS answers, mapped IPv6, DNS rebinding and a public-to-private redirect without actually contacting those hosts. Do not grant loopback exceptions to arbitrary user-supplied research URLs.
 
 ## Credentials, processes and files
-Declare every credential (including aliases) in `requires_env`; obtain it only through `from agent.secret_scope import get_secret`. Missing host scope fails closed: never fall back to `os.environ`, dotenv, keychains, browser storage or credential files. Remove admin `op=keys`/key-import/key-export operations. Only report configured/not-configured status, never values. Do not write secrets to process-wide environment.
+Declare every credential (including aliases) in `requires_env`; obtain it only through `from agent.secret_scope import get_secret`. Missing host scope fails closed: never fall back to a bare process-environment read, dotenv, keychains, browser storage or credential files. Remove admin `op=keys`/key-import/key-export operations. Only report configured/not-configured status, never values. Do not write secrets to process-wide environment.
 
-Every subprocess, including Node/npm and helpers, receives an explicit minimal environment. Default inheritance (omitting `env`) is unsafe too. Use an exact-name allowlist of required non-secret settings; do not copy all `os.environ`, prefix-wide `NODE_*`, or `NODE_OPTIONS`. Add only specifically required application credentials retrieved via secret scope. Test with a sentinel unrelated secret and assert it never reaches the child.
+Every subprocess, including Node/npm and helpers, receives an explicit minimal environment. Default inheritance (omitting `env`) is unsafe too. Use an exact-name allowlist of required non-secret settings; do not copy the whole process-environment mapping, prefix-wide `NODE_*`, or `NODE_OPTIONS`. Add only specifically required application credentials retrieved via secret scope. Test with a sentinel unrelated secret and assert it never reaches the child.
 
 Use documented host APIs, not `tools.desktop_ui` or other private host internals. Use `hermes_constants.get_hermes_home()` and profile-aware plugin data APIs, never hardcoded `~/.hermes` or raw `HERMES_HOME` reads. Resolve paths and symlinks before checking containment under the plugin data directory; reject traversal, absolute escapes and symlink escapes for imports AND exports. An extra directory must be configured explicitly by the user/host, never granted by an LLM argument, and must not be a filesystem root. Keep state out of the installed checkout.
+
+## Untrusted text and privileged pane actions
+Treat feed titles, lobby messages, ship names, OSM names and any other
+third-party string as attacker-controlled. Strip newlines and control
+characters; present them as quoted data; never add a system-prompt line that
+tells the model to trust them. Privileged account actions (pairing
+approve/revoke, spend, device grants) stay a human gesture in the pane or go
+through Hermes's approval prompt — not a model-supplied code.
+
+## Dashboard token confinement
+`SDK.authedFetch` attaches the Hermes session token. Pass only relative
+plugin routes, `data:` or `blob:` URLs. Never an absolute `http(s):` URL
+from an upstream `asset_url`. Desktop assets go through `ctx.rest` and blob
+URLs.
+
+## Relays, binds and driven browsers
+Token-gate every viewer/frame/ping/input route. Do not mint or return the
+token on an unauthenticated GET, or to `null`/`file://` origins. Bind
+`127.0.0.1` by default; refuse `0.0.0.0` and public wildcards (tailnet is an
+explicit documented opt-in). Check `Host`. If a tool can navigate a
+dedicated browser, allowlist destinations so `file://` and LAN admin pages
+cannot be opened and read back. Keep the browser sandbox when not running as
+root. Compare tokens in constant time.
+
+## Error and fetch hygiene
+Every outbound fetch, including "internal" provider probes, goes through the
+public-address guard. A leftover `urllib.request.urlopen` follows redirects
+and re-resolves DNS, so it can forward a key to a private or metadata host.
+POST does not follow redirects. Scrub secrets from tool errors and logs.
+Refuse to import credential-like filenames even inside plugin-data. Pin
+downloaded artifacts to a commit or official URL and check SHA-256.
+
+## Test-host enablement
+Before a temporary enable on a shared host, snapshot only that plugin's
+enablement and settings. After the test, surgically restore those fields
+(disable the plugin if it was not enabled before). Do not leave a test
+enablement on.
+
