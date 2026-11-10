@@ -1,15 +1,22 @@
 # Catalog submission draft — hermes-plugin-dev v0.3.0
 
 **Status: ready to open, waiting for Kyle's yes.** The plugin v0.3.0 tag and
-GitHub release exist. The catalog PR on `NousResearch/hermes-agent` has **not**
-been opened.
+GitHub release exist. The catalog branch is on the fork. The catalog PR on
+`NousResearch/hermes-agent` has **not** been opened.
 
 - Plugin repo: https://github.com/mojomast/hermes-plugin-dev
 - Merge commit / **catalog pin:** `1bc5bf5142db3bfc3c0cdf032a7adb4883426825`
-- Tag: https://github.com/mojomast/hermes-plugin-dev/releases/tag/v0.3.0
-- This file and `catalog/hermes-plugin-dev.yaml` were updated *after* the tag
-  so they could carry the real sha. The pin still points at the tagged commit,
-  not at this docs follow-up.
+- Tag / release: https://github.com/mojomast/hermes-plugin-dev/releases/tag/v0.3.0
+- Fork branch: https://github.com/mojomast/hermes-agent/tree/catalog/hermes-plugin-dev-v0.3.0
+  (commit `739167f1fd1520a3889b43f82d714bfb1d576927`, YAML-only)
+- Compare (open this after Kyle's yes; do not open the PR yet):
+  https://github.com/NousResearch/hermes-agent/compare/main...mojomast:hermes-agent:catalog/hermes-plugin-dev-v0.3.0?expand=1
+- This file and `catalog/hermes-plugin-dev.yaml` in the plugin repo were updated
+  *after* the tag so they could carry the real sha. The pin still points at the
+  tagged commit, not at this docs follow-up.
+- Open mojomast catalog PRs on `NousResearch/hermes-agent`: **3 of 5**
+  (#151946 stitchslop, #150358 Hermagotchi, #149691 Eye Of Hermes). Room for
+  this listing without closing one.
 
 ## Already done
 
@@ -22,17 +29,26 @@ been opened.
 - `hermes plugins doctor . --ci` and `hermes plugins validate .` were green on
   the release tree. Security scan: **safe**. Requires Hermes `>=0.21.6`. Local
   CLI used for those checks: Hermes Agent v0.23.0 (`2bd378ed1b8d`).
+- `scripts/validate_plugin_catalog.py plugin-catalog/hermes-plugin-dev.yaml`
+  on the fork branch (off upstream `main` at `a2fa0a4b649b7f3a771cf92f1ae43059eeec76e6`):
+  **OK: 1 file(s) valid**.
+- Scratch-home install (`HERMES_HOME` throwaway, not the live profile):
+  `hermes plugins install mojomast/hermes-plugin-dev --ref 1bc5bf5142db3bfc3c0cdf032a7adb4883426825 --enable --yes-deps`
+  installed that exact SHA, enabled the plugin, and `hermes plugins doctor`
+  reported **2 tool(s), 0 hook(s)** at version 0.3.0.
 - No extra screenshots (under the 6-shot cap).
 
 ## Still needs Kyle's yes
 
-Open a YAML-only PR from the fork branch (see below) to
-`NousResearch/hermes-agent`, adding only `plugin-catalog/hermes-plugin-dev.yaml`.
-Do not comment on other catalog threads unless asked.
+Open a YAML-only PR from the fork branch to `NousResearch/hermes-agent`,
+adding only `plugin-catalog/hermes-plugin-dev.yaml`. Use the title and body
+below. Do not comment on other catalog threads unless asked.
 
-## Draft catalog entry
+## Catalog entry (already on the fork branch)
 
-This is the file to copy to `plugin-catalog/hermes-plugin-dev.yaml`.
+The file at
+https://github.com/mojomast/hermes-agent/blob/catalog/hermes-plugin-dev-v0.3.0/plugin-catalog/hermes-plugin-dev.yaml
+is:
 
 ```yaml
 name: hermes-plugin-dev
@@ -50,14 +66,16 @@ maintainer: mojomast
 tier: community
 category: tools
 requires_hermes: ">=0.21.6"
-version: "0.3.0"
 docs_url: https://github.com/mojomast/hermes-plugin-dev#readme
+version: "0.3.0"
+image: https://raw.githubusercontent.com/mojomast/hermes-plugin-dev/1bc5bf5142db3bfc3c0cdf032a7adb4883426825/assets/banner-v3.jpg
 readme: true
 platforms: []
-image: https://raw.githubusercontent.com/mojomast/hermes-plugin-dev/1bc5bf5142db3bfc3c0cdf032a7adb4883426825/assets/banner-v3.jpg
 known_issues: []
 capabilities:
-  provides_tools: [hpd_scaffold, hpd_check]
+  provides_tools:
+    - hpd_scaffold
+    - hpd_check
   provides_hooks: []
   provides_middleware: []
   requires_env: []
@@ -105,12 +123,12 @@ code during schema measurement.
 
 ### Checks run at the pinned SHA
 
-- [ ] `python scripts/validate_plugin_catalog.py plugin-catalog/hermes-plugin-dev.yaml` passes
+- [x] `python scripts/validate_plugin_catalog.py plugin-catalog/hermes-plugin-dev.yaml` passes (`OK: 1 file(s) valid`)
 - [x] `hermes plugins validate` at the pin passes (security scan: safe)
 - [x] `hermes plugins doctor . --ci` at the pin passes (2 tools, 0 hooks)
 - [x] Schema token cost: 2 tools, 190 o200k tokens
 - [x] Banner URL returns HTTP 200 and is pinned to the same SHA; no extra screenshots
 - [x] Secret scan clean
-- [ ] Real catalog install in a scratch `HERMES_HOME`: installed sha equals the pin, both tools register
+- [x] Real catalog install in a scratch `HERMES_HOME`: installed sha equals the pin, both tools register
 - Tested on Hermes v0.23.0
 ```
