@@ -1,13 +1,14 @@
 manifest_version: 2
 api_version: 1
 name: hermes-plugin-dev
-version: "0.3.0"
+version: "0.3.1"
 description: >-
   Build Hermes plugins with Hermes. Bundles the hermes-plugin-development skill and two
   offline tools: scaffold a plugin from a validated template, and lint a plugin
-  (manifest, catalog entry, schema token cost). Disclosure: no network, no subprocesses,
-  no credentials; writes only inside the target directory you name; the lint's token
-  measure imports the target plugin's register() with a fake host, like doctor does.
+  (manifest, catalog entry, static schema token cost). Disclosure: no network, no
+  subprocesses, no credentials; writes only inside the target directory you name;
+  hpd_check never imports the target plugin; import-based schema measure is the
+  user-run CLI `hermes hpd check <dir> --execute`.
 author: mojomast
 license: MIT
 homepage: https://github.com/mojomast/hermes-plugin-dev

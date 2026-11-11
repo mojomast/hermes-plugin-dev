@@ -429,6 +429,338 @@ def check_private_imports(plugin: Path) -> dict:
     }
 
 
+
+# ---------------------------------------------------------------- static schema tokens
+# Used by the model-facing hpd_check tool. Parses source only: no import, no exec.
+_UNKNOWN = object()
+
+
+def _eval_node(node, env: dict):
+    """Best-effort const-fold. Returns _UNKNOWN when the value is not static."""
+    if node is None:
+        return _UNKNOWN
+    if isinstance(node, ast.Constant):
+        return node.value
+    if isinstance(node, ast.Name):
+        return env[node.id] if node.id in env else _UNKNOWN
+    if isinstance(node, ast.UnaryOp):
+        val = _eval_node(node.operand, env)
+        if val is _UNKNOWN:
+            return _UNKNOWN
+        try:
+            if isinstance(node.op, ast.USub):
+                return -val
+            if isinstance(node.op, ast.UAdd):
+                return +val
+            if isinstance(node.op, ast.Not):
+                return not val
+        except Exception:  # noqa: BLE001
+            return _UNKNOWN
+        return _UNKNOWN
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left, right = _eval_node(node.left, env), _eval_node(node.right, env)
+        if left is _UNKNOWN or right is _UNKNOWN:
+            return _UNKNOWN
+        try:
+            return left + right
+        except Exception:  # noqa: BLE001
+            return _UNKNOWN
+    if isinstance(node, ast.JoinedStr):
+        parts = []
+        for value in node.values:
+            if isinstance(value, ast.Constant):
+                parts.append(str(value.value))
+            elif isinstance(value, ast.FormattedValue):
+                inner = _eval_node(value.value, env)
+                if inner is _UNKNOWN:
+                    return _UNKNOWN
+                fmt = ""
+                if value.format_spec is not None:
+                    fmt = _eval_node(value.format_spec, env)
+                    if not isinstance(fmt, str):
+                        return _UNKNOWN
+                try:
+                    conv = value.conversion
+                    if conv == 115:
+                        inner = str(inner)
+                    elif conv == 114:
+                        inner = repr(inner)
+                    elif conv == 97:
+                        inner = ascii(inner)
+                    parts.append(format(inner, fmt) if fmt else format(inner))
+                except Exception:  # noqa: BLE001
+                    return _UNKNOWN
+            else:
+                return _UNKNOWN
+        return "".join(parts)
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        items = []
+        for elt in node.elts:
+            if isinstance(elt, ast.Starred):
+                val = _eval_node(elt.value, env)
+                if val is _UNKNOWN or not isinstance(val, (list, tuple)):
+                    return _UNKNOWN
+                items.extend(val)
+            else:
+                items.append(_eval_node(elt, env))
+        if isinstance(node, ast.List):
+            return items
+        if isinstance(node, ast.Tuple):
+            return tuple(items)
+        if any(i is _UNKNOWN for i in items):
+            return _UNKNOWN
+        try:
+            return set(items)
+        except TypeError:
+            return _UNKNOWN
+    if isinstance(node, ast.Dict):
+        out: dict = {}
+        for key_node, val_node in zip(node.keys, node.values):
+            if key_node is None:
+                val = _eval_node(val_node, env)
+                if val is _UNKNOWN or not isinstance(val, dict) or any(v is _UNKNOWN for v in val.values()):
+                    return _UNKNOWN
+                out.update(val)
+                continue
+            key, val = _eval_node(key_node, env), _eval_node(val_node, env)
+            if key is _UNKNOWN or val is _UNKNOWN:
+                return _UNKNOWN
+            try:
+                hash(key)
+            except TypeError:
+                return _UNKNOWN
+            out[key] = val
+        return out
+    if isinstance(node, ast.Subscript):
+        value = _eval_node(node.value, env)
+        if value is _UNKNOWN or isinstance(node.slice, ast.Slice):
+            return _UNKNOWN
+        key = _eval_node(node.slice, env)
+        if key is _UNKNOWN:
+            return _UNKNOWN
+        try:
+            return value[key]
+        except Exception:  # noqa: BLE001
+            return _UNKNOWN
+    if isinstance(node, ast.Call):
+        func = node.func
+        fname = func.id if isinstance(func, ast.Name) else ""
+        if fname == "dict":
+            out = {}
+            if node.args:
+                val = _eval_node(node.args[0], env)
+                if val is _UNKNOWN or not isinstance(val, dict):
+                    return _UNKNOWN
+                out.update(val)
+            for kw in node.keywords:
+                if kw.arg is None:
+                    val = _eval_node(kw.value, env)
+                    if val is _UNKNOWN or not isinstance(val, dict):
+                        return _UNKNOWN
+                    out.update(val)
+                else:
+                    val = _eval_node(kw.value, env)
+                    if val is _UNKNOWN:
+                        return _UNKNOWN
+                    out[kw.arg] = val
+            if any(v is _UNKNOWN for v in out.values()):
+                return _UNKNOWN
+            return out
+        if fname in {"list", "tuple"} and len(node.args) == 1 and not node.keywords:
+            val = _eval_node(node.args[0], env)
+            if val is _UNKNOWN:
+                return _UNKNOWN
+            try:
+                return list(val) if fname == "list" else tuple(val)
+            except Exception:  # noqa: BLE001
+                return _UNKNOWN
+        if (fname == "loads" or (isinstance(func, ast.Attribute) and func.attr == "loads")) \
+                and len(node.args) == 1 and not node.keywords:
+            val = _eval_node(node.args[0], env)
+            if isinstance(val, str):
+                try:
+                    return json.loads(val)
+                except Exception:  # noqa: BLE001
+                    return _UNKNOWN
+        return _UNKNOWN
+    if isinstance(node, ast.IfExp):
+        test = _eval_node(node.test, env)
+        if test is _UNKNOWN:
+            return _UNKNOWN
+        return _eval_node(node.body if test else node.orelse, env)
+    if isinstance(node, ast.BoolOp):
+        values = [_eval_node(v, env) for v in node.values]
+        if any(v is _UNKNOWN for v in values):
+            return _UNKNOWN
+        try:
+            result = values[0]
+            for val in values[1:]:
+                result = (result and val) if isinstance(node.op, ast.And) else (result or val)
+            return result
+        except Exception:  # noqa: BLE001
+            return _UNKNOWN
+    return _UNKNOWN
+
+
+def _bind(target, value, env: dict) -> None:
+    if isinstance(target, ast.Name):
+        env[target.id] = value
+    elif isinstance(target, (ast.Tuple, ast.List)) and isinstance(value, (list, tuple)) \
+            and len(value) == len(target.elts):
+        for item, val in zip(target.elts, value):
+            _bind(item, val, env)
+
+
+def _assign_env(stmt, env: dict) -> None:
+    if isinstance(stmt, ast.Assign):
+        value = _eval_node(stmt.value, env)
+        for target in stmt.targets:
+            _bind(target, value, env)
+    elif isinstance(stmt, ast.AnnAssign) and stmt.value is not None:
+        _bind(stmt.target, _eval_node(stmt.value, env), env)
+
+
+def _is_register_tool_call(node: ast.Call) -> bool:
+    name = _dotted(node.func)
+    tail = name.split(".")[-1]
+    return tail in {"register_tool", "_register_tool_compat"} or name.endswith("register_tool")
+
+
+def _extract_from_call(node: ast.Call, env: dict) -> tuple[str | None, object]:
+    name_node = schema_node = None
+    for kw in node.keywords:
+        if kw.arg == "name":
+            name_node = kw.value
+        elif kw.arg == "schema":
+            schema_node = kw.value
+    tail = _dotted(node.func).split(".")[-1]
+    if tail != "_register_tool_compat":
+        if name_node is None and node.args:
+            name_node = node.args[0]
+        if schema_node is None and len(node.args) >= 3:
+            schema_node = node.args[2]
+    schema = _eval_node(schema_node, env) if schema_node is not None else _UNKNOWN
+    name = _eval_node(name_node, env) if name_node is not None else _UNKNOWN
+    if not isinstance(name, str):
+        name = schema["name"] if isinstance(schema, dict) and isinstance(schema.get("name"), str) else None
+    if not isinstance(schema, dict):
+        schema = _UNKNOWN
+    return name, schema
+
+
+def _walk_stmts(stmts, env: dict, calls: list) -> None:
+    env = dict(env)
+    for stmt in stmts:
+        if isinstance(stmt, (ast.Assign, ast.AnnAssign)):
+            _assign_env(stmt, env)
+        if isinstance(stmt, ast.For):
+            rows = _eval_node(stmt.iter, env)
+            if isinstance(rows, (list, tuple)):
+                for row in rows:
+                    body_env = dict(env)
+                    _bind(stmt.target, row, body_env)
+                    _walk_stmts(stmt.body, body_env, calls)
+            else:
+                _walk_stmts(stmt.body, env, calls)
+            _walk_stmts(stmt.orelse, env, calls)
+            continue
+        if isinstance(stmt, ast.If):
+            _walk_stmts(stmt.body, env, calls)
+            _walk_stmts(stmt.orelse, env, calls)
+            continue
+        if isinstance(stmt, ast.With):
+            _walk_stmts(stmt.body, env, calls)
+            continue
+        if isinstance(stmt, ast.Try):
+            _walk_stmts(stmt.body, env, calls)
+            for handler in stmt.handlers:
+                _walk_stmts(handler.body, env, calls)
+            _walk_stmts(stmt.orelse, env, calls)
+            _walk_stmts(stmt.finalbody, env, calls)
+            continue
+        if isinstance(stmt, ast.While):
+            _walk_stmts(stmt.body, env, calls)
+            _walk_stmts(stmt.orelse, env, calls)
+            continue
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        if isinstance(stmt, ast.Match):
+            for case in stmt.cases:
+                _walk_stmts(case.body, env, calls)
+            continue
+        for node in ast.walk(stmt):
+            if isinstance(node, ast.Call) and _is_register_tool_call(node):
+                calls.append((node, dict(env)))
+
+
+def measure_schemas_static(plugin: Path) -> dict:
+    """Count schema tokens by parsing source. Never imports or executes plugin code."""
+    init = plugin / "__init__.py"
+    if not init.is_file():
+        return {"ok": False, "errors": ["no __init__.py"], "method": "static", "source": "static"}
+    schemas: dict[str, Any] = {}
+    unnamed: list[Any] = []
+    warnings: list[str] = []
+    found_calls = 0
+    resolved = 0
+    for path, rel in _scan_files(plugin):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError as exc:
+            warnings.append(f"{rel}: syntax error, skipped ({exc.msg})")
+            continue
+        env: dict[str, Any] = {}
+        for stmt in tree.body:
+            if isinstance(stmt, (ast.Assign, ast.AnnAssign)):
+                _assign_env(stmt, env)
+        calls: list = []
+        top = [s for s in tree.body if not isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
+        _walk_stmts(top, env, calls)
+        for stmt in tree.body:
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                _walk_stmts(stmt.body, env, calls)
+            elif isinstance(stmt, ast.ClassDef):
+                for item in stmt.body:
+                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        _walk_stmts(item.body, env, calls)
+        for node, call_env in calls:
+            found_calls += 1
+            name, schema = _extract_from_call(node, call_env)
+            if schema is _UNKNOWN or not isinstance(schema, dict):
+                warnings.append(f"{rel}:{getattr(node, 'lineno', 1)}: could not statically resolve schema")
+                continue
+            resolved += 1
+            if name:
+                schemas[name] = schema
+            else:
+                unnamed.append(schema)
+    tools = list(schemas)
+    all_schemas = list(schemas.values()) + unnamed
+    if found_calls == 0:
+        warnings.append(
+            "no register_tool calls found statically; run: hermes hpd check <dir> --execute"
+        )
+    text = json.dumps(all_schemas, separators=(",", ":"), ensure_ascii=False)
+    try:
+        import tiktoken
+
+        tokens, method = len(tiktoken.get_encoding("o200k_base").encode(text)), "o200k_base+static"
+    except Exception:  # noqa: BLE001
+        tokens, method = round(len(text) / 4), "approx(chars/4)+static"
+    return {
+        "ok": True,
+        "tools": sorted(tools),
+        "hooks": [],
+        "skills": [],
+        "schema_tokens": tokens if all_schemas else 0,
+        "method": method,
+        "source": "static",
+        "warnings": warnings,
+        "resolved": resolved,
+        "calls": found_calls,
+    }
+
+
 class _FakeCtx:
     def __init__(self):
         self.tools: dict[str, dict] = {}
@@ -450,6 +782,12 @@ class _FakeCtx:
 
 
 def measure_schemas(plugin: Path) -> dict:
+    """Import the plugin and call register() on a fake host.
+
+    This executes the target's module-level code and register(). It is only
+    for a user-run CLI (``hermes hpd check <dir> --execute``), never for the
+    model-facing ``hpd_check`` tool. Only run it on code you trust.
+    """
     init = plugin / "__init__.py"
     if not init.is_file():
         return {"ok": False, "errors": ["no __init__.py"]}
@@ -635,7 +973,23 @@ def check_security(plugin: Path) -> dict:
             'scope': 'heuristic runtime source scan; manual review and live tests required'}
 
 
-def check(path: str, catalog_entry: str = "", tokens: bool = True) -> dict:
+def _compare_declared(out: dict, tools: list) -> None:
+    declared = sorted(out["manifest"].get("declared_tools") or [])
+    got = sorted(tools)
+    if declared != got:
+        msg = f"provides_tools {declared} != registered {got}"
+        if msg not in out["manifest"]["errors"]:
+            out["manifest"]["errors"].append(msg)
+        out["manifest"]["ok"] = False
+
+
+def check(path: str, catalog_entry: str = "", tokens: bool = True, *, execute: bool = False) -> dict:
+    """Lint a plugin directory.
+
+    Schema tokens default to a static AST parse and never import the plugin.
+    Pass execute=True only from a user-run CLI (``hermes hpd check --execute``)
+    to import register() with a fake host, like ``hermes plugins doctor``.
+    """
     if not path:
         return _err("no_path", "path is required", "Pass the plugin directory.")
     plugin = Path(path).expanduser().resolve()
@@ -651,17 +1005,40 @@ def check(path: str, catalog_entry: str = "", tokens: bool = True) -> dict:
         out["private_imports"] = imports
 
     if tokens:
-        out["schemas"] = measure_schemas(plugin)
-        declared = sorted(out["manifest"].get("declared_tools") or [])
-        if out["schemas"].get("ok") and declared != out["schemas"]["tools"]:
-            out["manifest"]["errors"].append(
-                f"provides_tools {declared} != registered {out['schemas']['tools']}")
-            out["manifest"]["ok"] = False
+        out["schemas"] = measure_schemas_static(plugin)
+        static = out["schemas"]
+        complete = (
+            static.get("ok")
+            and int(static.get("calls") or 0) > 0
+            and int(static.get("calls") or 0) == int(static.get("resolved") or 0)
+        )
+        if complete:
+            _compare_declared(out, static.get("tools") or [])
+        elif static.get("ok") and (out["manifest"].get("declared_tools") or []):
+            static.setdefault("warnings", []).append(
+                "could not statically verify every register_tool schema; "
+                "run: hermes hpd check <dir> --execute"
+            )
+    if execute:
+        executed = measure_schemas(plugin)
+        out["schemas_executed"] = executed
+        if executed.get("ok"):
+            _compare_declared(out, executed.get("tools") or [])
+        if tokens and executed.get("ok") and out.get("schemas", {}).get("ok"):
+            static_tokens = out["schemas"].get("schema_tokens")
+            exec_tokens = executed.get("schema_tokens")
+            if static_tokens is not None and exec_tokens is not None and static_tokens != exec_tokens:
+                out["schemas"].setdefault("warnings", []).append(
+                    f"static token count {static_tokens} != executed {exec_tokens}; prefer the executed count"
+                )
     if catalog_entry:
         entry = Path(catalog_entry).expanduser()
         if not entry.is_absolute():
             entry = plugin / entry
         out["catalog"] = check_catalog(entry) if entry.is_file() else {"ok": False, "errors": [f"{entry} not found"]}
     out["ok"] = all(v.get("ok", True) for v in out.values() if isinstance(v, dict))
-    out["next"] = "Then run: hermes plugins doctor <path> --ci && hermes plugins validate <path> --install-deps"
+    nxt = "Then run: hermes plugins doctor <path> --ci && hermes plugins validate <path> --install-deps"
+    if not execute:
+        nxt += " (import-based schema measure: hermes hpd check <path> --execute)"
+    out["next"] = nxt
     return out
