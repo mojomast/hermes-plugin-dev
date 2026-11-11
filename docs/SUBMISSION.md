@@ -1,11 +1,14 @@
 # Catalog submission draft — hermes-plugin-dev v0.3.1
 
-**Status: v0.3.0 catalog PR is open** as
+**Status: v0.3.1 is tagged and re-pinned** on
 [NousResearch/hermes-agent#152699](https://github.com/NousResearch/hermes-agent/pull/152699).
-teknium1 requested changes: `hpd_check` must not import the target plugin.
-v0.3.1 is that fix (static AST measure in the tool; import-based measure only
-on `hermes hpd check --execute`). After the authorized tag, re-pin `sha:` and
-`version:` on the existing catalog branch and reply on the PR.
+- Plugin pin / tag commit: `796a35e4d893b985f1b61d8e11b5ae7e4118bf6f`
+- Tag / release: https://github.com/mojomast/hermes-plugin-dev/releases/tag/v0.3.1
+- Catalog branch commit: see the fork branch `catalog/hermes-plugin-dev-v0.3.0`
+- Review reply: posted on the PR, waiting on teknium1
+
+v0.3.1 is the review fix (static AST measure in `hpd_check`; import-based
+measure only on `hermes hpd check --execute`).
 
 The v0.3.0 pin and draft below are kept for history. Use the v0.3.1 description:
 
