@@ -29,7 +29,7 @@ SCAFFOLD_SCHEMA = {
 
 CHECK_SCHEMA = {
     "name": "hpd_check",
-    "description": "Lint a Hermes plugin offline: strict plugin.yaml, provides_tools vs registered, security preflight, schema token cost (imports trusted register() with a fake host), optional catalog entry.",
+    "description": "Lint a Hermes plugin offline: strict plugin.yaml, provides_tools vs registered, security preflight, static schema token cost (AST only, never imports the plugin), optional catalog entry.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -58,9 +58,21 @@ def _scaffold(args: dict | None = None, **_kw) -> str:
     return json.dumps(_core().scaffold(str(a.get("target_dir") or ""), str(a.get("name") or "")))
 
 
+def _cli():
+    name = "hermes_plugin_dev_cli"
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, _HERE / "hpd_cli.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def _check(args: dict | None = None, **_kw) -> str:
+    """Model-facing lint. Ignores any execute/tokens flag the model invents."""
     a = args or {}
-    return json.dumps(_core().check(str(a.get("path") or ""), str(a.get("catalog_entry") or "")))
+    return json.dumps(_core().check(str(a.get("path") or ""), str(a.get("catalog_entry") or ""), execute=False))
 
 
 def _register_tool_compat(register, **kwargs) -> None:
@@ -82,3 +94,17 @@ def register(ctx) -> None:
     for schema, handler in ((SCAFFOLD_SCHEMA, _scaffold), (CHECK_SCHEMA, _check)):
         _register_tool_compat(ctx.register_tool, name=schema["name"], toolset=TOOLSET,
                               schema=schema, handler=handler, description=schema["description"], emoji="🛠️")
+    if hasattr(ctx, "register_cli_command"):
+        cli = _cli()
+        ctx.register_cli_command(
+            name="hpd",
+            help="Lint a Hermes plugin (static by default; --execute imports register())",
+            setup_fn=cli.setup,
+            handler_fn=cli.handler,
+            description=(
+                "User-run lint for a plugin directory. Default is a static AST pass "
+                "that never imports the target. `hermes hpd check <dir> --execute` "
+                "imports register() with a fake host, like `hermes plugins doctor`. "
+                "Only use --execute on code you trust."
+            ),
+        )

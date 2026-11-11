@@ -1,4 +1,30 @@
-# Catalog submission draft — hermes-plugin-dev v0.3.0
+# Catalog submission draft — hermes-plugin-dev v0.3.1
+
+**Status: v0.3.0 catalog PR is open** as
+[NousResearch/hermes-agent#152699](https://github.com/NousResearch/hermes-agent/pull/152699).
+teknium1 requested changes: `hpd_check` must not import the target plugin.
+v0.3.1 is that fix (static AST measure in the tool; import-based measure only
+on `hermes hpd check --execute`). After the authorized tag, re-pin `sha:` and
+`version:` on the existing catalog branch and reply on the PR.
+
+The v0.3.0 pin and draft below are kept for history. Use the v0.3.1 description:
+
+```yaml
+description: >-
+  Build Hermes plugins with Hermes: bundles the hermes-plugin-development skill plus two
+  offline tools to scaffold a plugin from a validated template and lint manifests, catalog
+  entries, security preflight and schema token cost. No network, subprocesses or credentials;
+  writes only into the target folder you name; hpd_check measures schema tokens statically
+  and never imports the target plugin; import-based measure is the user-run CLI
+  `hermes hpd check <dir> --execute`. The security preflight is a heuristic, not a proof.
+```
+
+Disclosure for the repin: `hpd_check` is read-only and never imports the target.
+Import-based schema measurement is the user-run CLI `hermes hpd check <dir> --execute`.
+
+---
+
+# Catalog submission draft — hermes-plugin-dev v0.3.0 (historical)
 
 **Status: ready to open, waiting for Kyle's yes.** The plugin v0.3.0 tag and
 GitHub release exist. The catalog branch is on the fork. The catalog PR on

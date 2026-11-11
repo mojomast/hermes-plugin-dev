@@ -246,12 +246,17 @@ submit on someone's behalf without their explicit yes.
 - `hpd_scaffold(target_dir, name)`: copy `templates/hello-hermes` into a new or empty
   folder, renamed, with a catalog entry and PR body stub.
 - `hpd_check(path, catalog_entry?)`: offline lint covering strict YAML, manifest rules,
-  `provides_tools` vs registered, security preflight, schema o200k tokens,
-  core-override rebinds, imports outside the public API, and catalog entry
-  rules (including the 6-screenshot cap). Then run `hermes plugins doctor` and
-  `validate` in a terminal for the authoritative gate.
+  `provides_tools` vs registered (from a static AST parse), security preflight,
+  static o200k schema tokens, core-override rebinds, imports outside the public
+  API, and catalog entry rules (including the 6-screenshot cap). It never
+  imports the target plugin.
+- `hermes hpd check <dir> [--execute]`: user-run CLI for the same lint. Default
+  is static. `--execute` imports `register()` with a fake host, like
+  `hermes plugins doctor` — only on code you trust.
 
-Other agents can get the same checks with `python hpd_core.py` functions from the repo.
+Then run `hermes plugins doctor` and `validate` in a terminal for the
+authoritative gate. Other agents can call `hpd_core.check` or
+`python hpd_cli.py check <dir>`.
 
 ## Files in this skill
 

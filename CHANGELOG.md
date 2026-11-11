@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.1 — 2026-11-11
+
+Security fix for catalog review on [NousResearch/hermes-agent#152699](https://github.com/NousResearch/hermes-agent/pull/152699):
+
+- The model-facing `hpd_check` tool measures schema tokens statically. It parses
+  `register_tool` schema dicts from the AST and never imports or executes the
+  target plugin, even if the model passes a path or invents an `execute` flag.
+- Import-based measurement (`import` + `register()` on a fake host, the same
+  class of execution as `hermes plugins doctor`) is only available on a user-run
+  CLI: `hermes hpd check <dir> --execute` (also `python hpd_cli.py check <dir> --execute`).
+  That path is documented as unsandboxed; only use it on code you trust.
+- Tests cover a malicious `__init__.py` that is not executed on the tool path,
+  and is executed only with `--execute`. Static token counts match the import
+  path for this plugin and the hello-hermes template.
+
+
 ## 0.3.0 — 2026-11-10
 
 Skill, references, and README updated with catalog-review lessons observed

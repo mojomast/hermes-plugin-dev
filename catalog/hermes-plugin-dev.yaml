@@ -10,8 +10,9 @@ description: >-
   Build Hermes plugins with Hermes: bundles the hermes-plugin-development skill plus two
   offline tools to scaffold a plugin from a validated template and lint manifests, catalog
   entries, security preflight and schema token cost. No network, subprocesses or credentials;
-  writes only into the target folder you name; the lint imports the target plugin's
-  register() with a fake host. The security preflight is a heuristic, not a proof.
+  writes only into the target folder you name; hpd_check measures schema tokens statically
+  and never imports the target plugin; import-based measure is the user-run CLI
+  `hermes hpd check <dir> --execute`. The security preflight is a heuristic, not a proof.
 maintainer: mojomast
 tier: community
 category: tools

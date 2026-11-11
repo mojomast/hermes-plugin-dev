@@ -15,7 +15,7 @@
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <a href="https://agentskills.io"><img alt="Agent Skills" src="https://img.shields.io/badge/Agent%20Skills-compatible-8A2BE2"></a>
   <a href="https://github.com/NousResearch/hermes-agent"><img alt="Hermes Agent" src="https://img.shields.io/badge/Hermes%20Agent-%E2%89%A50.21.6-black"></a>
-  <img alt="Version 0.3.0" src="https://img.shields.io/badge/version-0.3.0-8b5cf6">
+  <img alt="Version 0.3.1" src="https://img.shields.io/badge/version-0.3.1-8b5cf6">
   <img alt="Tool schema cost" src="https://img.shields.io/badge/tool%20schemas-190%20o200k%20tokens-success">
 </p>
 
@@ -58,7 +58,8 @@ also gives the Hermes agent two small tools to build plugins itself.
 | Tool | What it does | Safety |
 |---|---|---|
 | `hpd_scaffold(target_dir, name)` | Creates a new plugin from the template, renamed, with a catalog entry + PR body stub | Writes only inside `target_dir`; refuses non-empty dirs; never overwrites |
-| `hpd_check(path, catalog_entry?)` | Offline lint: strict YAML, manifest rules, `provides_tools` vs registered, security preflight, schema token cost, catalog entry rules (sha, hosts, category, subdir, at most 6 screenshots) | Read-only. Token measure imports the target's `register()` with a fake host, the same as `hermes plugins doctor` |
+| `hpd_check(path, catalog_entry?)` | Offline lint: strict YAML, manifest rules, `provides_tools` vs registered (static AST), security preflight, static schema token cost, catalog entry rules (sha, hosts, category, subdir, at most 6 screenshots) | Read-only. Never imports or executes the target plugin. |
+| `hermes hpd check <dir> [--execute]` | User-run CLI for the same lint | Default is static. `--execute` imports `register()` with a fake host, like `hermes plugins doctor`. Only use it on code you trust. |
 
 No network calls, no subprocesses, no git, no credentials. The security preflight
 is a heuristic, not a proof: it flags known anti-patterns (CDN React, session-token
@@ -144,14 +145,18 @@ catalog PR has **not** been opened.
 ```bash
 git clone https://github.com/mojomast/hermes-plugin-dev && cd hermes-plugin-dev
 pip install pyyaml tiktoken
-python -c "import hpd_core, json; print(json.dumps(hpd_core.check('/path/to/my-plugin', 'catalog/my-plugin.yaml'), indent=2))"
+# Static lint (never imports the target plugin):
+python hpd_cli.py check /path/to/my-plugin
+# Import-based schema measure, same class of execution as `hermes plugins doctor`.
+# Only on code you trust:
+python hpd_cli.py check /path/to/my-plugin --execute --catalog catalog/my-plugin.yaml
 ```
 
 ## Repository layout
 
 ```text
 hermes-plugin-dev/
-├── plugin.yaml  __init__.py  hpd_core.py   # the Hermes plugin
+├── plugin.yaml  __init__.py  hpd_core.py  hpd_cli.py   # the Hermes plugin + CLI
 ├── skills/hermes-plugin-development/        # the Agent Skill
 │   ├── SKILL.md
 │   ├── references/*.md
@@ -178,14 +183,17 @@ PRs welcome.
 (190 o200k tokens) cover scaffolding and linting. Running `doctor`/`validate` stays in your
 terminal, where Hermes's own checks are authoritative.
 
-**Does it run my plugin's code?** Only `hpd_check`'s token measure, which imports your
-`register()` with a fake host, like `hermes plugins doctor` does. Only check code you trust.
-The security preflight reads source without executing it; run `check_security()` alone
-before opting into code execution on an untrusted tree.
+**Does it run my plugin's code?** The `hpd_check` tool does not. It measures schema
+tokens by parsing the AST of `register_tool` schemas and never imports the target.
+Import-based measurement is only on the user-run CLI: `hermes hpd check <dir> --execute`
+(or `python hpd_cli.py check <dir> --execute`). That path imports `register()` with a
+fake host, like `hermes plugins doctor`, and is not a sandbox — only use it on code
+you trust. The security preflight always reads source without executing it.
 
-**Is it in the Hermes catalog yet?** Not at the time of v0.3.0. The entry is prepared
-under `catalog/` and drafted in `docs/SUBMISSION.md`. A catalog PR will be opened only
-after an authorized tag and pin.
+**Is it in the Hermes catalog yet?** A listing PR is open:
+[NousResearch/hermes-agent#152699](https://github.com/NousResearch/hermes-agent/pull/152699),
+originally pinned to v0.3.0. v0.3.1 is the review fix (static `hpd_check`; import-based
+measure only on `hermes hpd check --execute`) and is the pin to use once released.
 
 ## Contributing
 
@@ -207,6 +215,21 @@ Worked examples to learn from: [EOH](https://github.com/mojomast/EOH) ·
 ## License
 
 [MIT](LICENSE)
+
+## What's new in 0.3.1
+
+`hpd_check` no longer imports the plugin it is linting. Schema tokens and
+`provides_tools` drift are measured by parsing `register_tool` schemas from
+the AST. Import-based measurement (`register()` on a fake host, like
+`hermes plugins doctor`) is only available on the user-run CLI:
+
+```bash
+hermes hpd check ./my-plugin --execute
+```
+
+Use `--execute` only on code you trust; it runs in that process, unsandboxed.
+This is the fix requested on catalog PR
+[#152699](https://github.com/NousResearch/hermes-agent/pull/152699).
 
 ## What's new in 0.3.0
 

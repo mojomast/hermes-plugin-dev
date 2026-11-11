@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class FakeCtx:
     def __init__(self):
-        self.tools, self.skills = {}, {}
+        self.tools, self.skills, self.cli_commands = {}, {}, []
 
     def register_tool(self, name, toolset, schema, handler, check_fn=None, requires_env=None,
                       is_async=False, description="", emoji="", override=False):
@@ -27,6 +27,12 @@ class FakeCtx:
     def register_skill(self, name, path, description="", frontmatter=None):
         assert Path(path).is_file()
         self.skills[name] = path
+
+    def register_cli_command(self, name, help, setup_fn, handler_fn=None, description=""):
+        self.cli_commands.append({
+            "name": name, "help": help, "setup_fn": setup_fn,
+            "handler_fn": handler_fn, "description": description,
+        })
 
 
 def load():
@@ -185,3 +191,10 @@ def test_private_imports_result_shape():
     assert res["ok"] is True
     assert isinstance(res["warnings"], list)
     assert set(res) >= {"checked", "warnings"}
+
+
+def test_registers_hpd_cli():
+    ctx = load()
+    assert [c["name"] for c in ctx.cli_commands] == ["hpd"]
+    assert callable(ctx.cli_commands[0]["setup_fn"])
+    assert callable(ctx.cli_commands[0]["handler_fn"])

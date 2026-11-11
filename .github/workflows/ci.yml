@@ -19,7 +19,7 @@ jobs:
       - run: pip install "pyyaml>=6,<7" "pytest>=8,<9" "tiktoken>=0.7,<1"
       - run: pytest -q
       - name: Measure tool schema tokens
-        run: python -c "import hpd_core,json;print(json.dumps(hpd_core.measure_schemas(__import__('pathlib').Path('.')),indent=1))"
+        run: python -c "from pathlib import Path; import json, hpd_core; s=hpd_core.measure_schemas_static(Path('.')); e=hpd_core.measure_schemas(Path('.')); print(json.dumps({'static':s,'executed':e},indent=1)); assert s['schema_tokens']==e['schema_tokens'] and s['tools']==e['tools']"
   secret-scan:
     runs-on: ubuntu-latest
     steps:
